@@ -1,9 +1,13 @@
 import { Request, Response } from "express";
-import { storage } from "../storage";
+// Extended request type with file property
+interface FileRequest extends Request {
+  file?: any;
+}
+import { storage } from "../database-storage";
 import { processCSV } from "../services/csvService";
 
 // Process a file and prompt
-export const processFileAndPrompt = async (req: Request, res: Response) => {
+export const processFileAndPrompt = async (req: FileRequest, res: Response) => {
   try {
     const message = req.body.message;
     const file = req.file;

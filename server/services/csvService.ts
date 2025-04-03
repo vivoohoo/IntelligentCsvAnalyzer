@@ -60,7 +60,7 @@ async function fallbackCSVProcessing(
     const headers = lines[0].split(',').map(h => h.trim());
     
     // Convert CSV rows to objects for easier analysis
-    const data = [];
+    const data: Record<string, string>[] = [];
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       

@@ -1,8 +1,12 @@
 import { Request, Response } from "express";
-import { storage } from "../storage";
+// Extended request type with file property
+interface FileRequest extends Request {
+  file?: any;
+}
+import { storage } from "../database-storage";
 
 // Upload a file
-export const uploadFile = async (req: Request, res: Response) => {
+export const uploadFile = async (req: FileRequest, res: Response) => {
   try {
     const file = req.file;
     

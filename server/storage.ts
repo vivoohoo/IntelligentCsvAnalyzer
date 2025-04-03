@@ -1,5 +1,6 @@
 import { users, type User, type InsertUser } from "@shared/schema";
 import { v4 as uuidv4 } from 'uuid';
+// Import DB storage implementation from database-storage.ts
 
 // Define interfaces for our storage objects
 interface UploadedFile {
@@ -74,7 +75,11 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.currentId++;
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      ...insertUser, 
+      id, 
+      createdAt: new Date() 
+    };
     this.users.set(id, user);
     return user;
   }
@@ -159,4 +164,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// The implementation of storage is provided in database-storage.ts

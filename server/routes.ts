@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { storage } from "./storage";
+import { storage } from "./database-storage";
 import { 
   processFileAndPrompt, 
   getChatHistory, 
