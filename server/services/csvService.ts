@@ -120,6 +120,100 @@ async function enhancedCSVProcessing(
       default:
         // Handle count queries (how many, total number of, etc.)
         if (isCountQuery(prompt)) {
+          // Check for date-specific count queries
+          const promptLower = prompt.toLowerCase();
+          const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+          
+          // Extract month and year if present
+          let targetMonth = -1;
+          let targetYear = -1;
+          
+          for (let i = 0; i < monthNames.length; i++) {
+            if (promptLower.includes(monthNames[i])) {
+              targetMonth = i + 1; // Convert to 1-based month number
+              break;
+            }
+          }
+          
+          // Try to find a year (4 digits)
+          const yearMatch = promptLower.match(/\b(20\d{2})\b/);
+          if (yearMatch) {
+            targetYear = parseInt(yearMatch[1]);
+          }
+          
+          // If we have both month and year, filter by date
+          if (targetMonth > 0 && targetYear > 0) {
+            // Find date column (looking for common patterns)
+            let dateColumn = '';
+            for (const header of headers) {
+              const headerLower = header.toLowerCase();
+              if (
+                headerLower.includes('date') || 
+                headerLower.includes('dt') || 
+                headerLower.includes('vou date') ||
+                headerLower.includes('invoice date') ||
+                headerLower.includes('bill date')
+              ) {
+                dateColumn = header;
+                break;
+              }
+            }
+            
+            if (dateColumn) {
+              let count = 0;
+              const monthStr = targetMonth.toString().padStart(2, '0');
+              
+              // Count matching dates
+              for (const row of data) {
+                const dateValue = row[dateColumn];
+                if (!dateValue) continue;
+                
+                // Try to match date in various formats
+                // Check for DD/MM/YYYY format (common in India)
+                if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+                  const parts = dateValue.split(/[\/\-\.]/);
+                  // Assume DD/MM/YYYY format
+                  const month = parseInt(parts[1]);
+                  const year = parseInt(parts[2]);
+                  
+                  if (month === targetMonth && year === targetYear) {
+                    count++;
+                  }
+                } 
+                // Check for MM/DD/YYYY format
+                else if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+                  const parts = dateValue.split(/[\/\-\.]/);
+                  // Try MM/DD/YYYY
+                  let month = parseInt(parts[0]);
+                  let year = parseInt(parts[2]);
+                  
+                  if (month === targetMonth && year === targetYear) {
+                    count++;
+                  }
+                }
+                // Check for YYYY-MM-DD format
+                else if (dateValue.match(/\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}/)) {
+                  const parts = dateValue.split(/[\/\-\.]/);
+                  const year = parseInt(parts[0]);
+                  const month = parseInt(parts[1]);
+                  
+                  if (month === targetMonth && year === targetYear) {
+                    count++;
+                  }
+                }
+                // Check for text format like "Feb 2025" or "February 2025"
+                else if (dateValue.toLowerCase().includes(monthNames[targetMonth-1]) && 
+                         dateValue.includes(targetYear.toString())) {
+                  count++;
+                }
+              }
+              
+              const monthName = monthNames[targetMonth-1];
+              return `I found ${count} invoices/records for ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${targetYear} in your data.`;
+            }
+          }
+          
+          // Handle invoice query without specific date filtering
           if (isInvoiceQuery(prompt)) {
             return `I found ${rowCount} records in your CSV file. Each row likely represents a separate invoice or transaction.`;
           }
