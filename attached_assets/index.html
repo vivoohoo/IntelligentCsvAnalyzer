@@ -1,0 +1,88 @@
+
+<html lang="en">
+    
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NxCompanion</title>
+
+  <link rel="stylesheet" href="static/css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.2.12/marked.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="app-container">
+      <div class="sidebar">
+        <div class="logo">
+          <i class="fas fa-robot"></i>
+          <span>NxCompanion</span>
+        </div>
+        <button id="new-chat" class="new-chat-btn">
+          <i class="fas fa-plus"></i>
+          <span>New Chat</span>
+        </button>
+        <div class="history-container">
+          <h3>Chat History</h3>
+          <div id="chat-history"></div>
+        </div>
+        <div class="settings">
+          <button id="clear-history">
+            <i class="fas fa-trash"></i>
+            <span>Clear History</span>
+          </button>
+          <button id="toggle-theme" class="theme-toggle">
+            <i class="fas fa-moon"></i><span>Dark Mode</span>
+        </button>
+        </div>
+      </div>
+      <div class="chat-container">
+        <div class="chat-header">
+          <div class="current-chat-title" id="current-chat-title">
+            New Conversation
+          </div>
+          <div class="header-actions">
+            <button id="regenerate-response" title="Regenerate response">
+              <i class="fas fa-sync"></i>
+            </button>
+            <button id="stop-response" title="Stop generating" style="display: none">
+              <i class="fas fa-stop"></i>
+            </button>
+            <button id="export-chat" title="Export conversation">
+              <i class="fas fa-download"></i>
+            </button>
+          </div>
+        </div>
+        <div class="messages" id="messages">
+          <div class="intro-message">
+            <h1>Welcome to NxCompanion</h1>
+            <p>Ask me anything</p>
+          </div>
+        </div>
+        <div class="input-area">
+          <div class="input-container">
+            <div id="response-container" class="response-box"></div>
+            <button id="file-upload-button" title="Upload File">
+              <i class="fas fa-paperclip"></i>
+            </button>
+            <input type="file" id="file-upload" accept=".csv"/>
+            <textarea id="user-input" placeholder="Type your message here..." rows="1"></textarea>
+            <button id="send-button" title="Send message">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+          <!-- Pending file preview container -->
+          <div id="pending-file-preview" style="display: none;"></div>
+          <div class="disclaimer">
+            NxCompanion can make mistakes. Please verify.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="static/js/script.js"></script>
+</body>
+
+</html>
