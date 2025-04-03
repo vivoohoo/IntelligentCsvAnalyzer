@@ -41,6 +41,26 @@ export default function ChatContainer({
     }
   }, [message]);
   
+  // File upload trigger helper
+  const handleTriggerFileUpload = () => {
+    // Create a temporary input element and trigger it
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = (e) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files && target.files[0];
+      if (file) {
+        if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
+          alert('Please upload a CSV file.');
+          return;
+        }
+        onFileUpload(file);
+      }
+    };
+    input.click();
+  };
+  
   // Handle Enter key for sending messages
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !isProcessing) {
@@ -131,11 +151,24 @@ export default function ChatContainer({
               <i className="fas fa-robot text-4xl"></i>
             </div>
             <h1 className="font-heading text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Welcome to NxCompanion</h1>
-            <p className="text-gray-600 dark:text-gray-300 max-w-md mx-auto">
+            <p className="text-gray-600 dark:text-gray-300 max-w-md mx-auto mb-8">
               Upload a CSV file and ask me anything about your data. I can help analyze sales, count invoices, identify trends, and more.
             </p>
             
+            {/* Large File Upload Area */}
+            <div className="max-w-lg mx-auto mb-8">
+              <FileUpload onFileUpload={onFileUpload} showLabel={true} />
+            </div>
+            
+            {/* Or divider */}
+            <div className="flex items-center justify-center max-w-lg mx-auto mb-6">
+              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
+              <div className="px-4 text-gray-500 dark:text-gray-400 text-sm">OR</div>
+              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
+            </div>
+            
             {/* Example queries */}
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">Try asking these example questions:</p>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-2 max-w-2xl mx-auto">
               <div 
                 className="example-query bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer p-3 rounded-md text-left text-sm border border-gray-200 dark:border-gray-700"
@@ -214,7 +247,15 @@ export default function ChatContainer({
           />
           
           {/* File upload button */}
-          <FileUpload onFileUpload={onFileUpload} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTriggerFileUpload}
+            className="flex items-center gap-2 text-xs mr-2 text-gray-500 hover:text-primary-500"
+          >
+            <i className="fas fa-file-csv"></i>
+            Upload CSV
+          </Button>
           
           {/* Send button */}
           <Button
