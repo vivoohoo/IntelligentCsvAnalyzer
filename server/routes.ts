@@ -1,14 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { storage } from "./database-storage";
+import { storage } from "./database-storage.js";
 import { 
   processFileAndPrompt, 
   getChatHistory, 
   clearChatHistory 
-} from "./controllers/chatController";
-import { uploadFile, getFileInfo } from "./controllers/fileController";
-import { checkNLPAvailability } from "./services/csvService";
+} from "./controllers/chatController.js";
+import { uploadFile, getFileInfo } from "./controllers/fileController.js";
+import { checkNLPAvailability } from "./services/csvService.js";
 
 // Set up multer for file uploads
 const upload = multer({

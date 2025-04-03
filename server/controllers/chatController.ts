@@ -3,8 +3,8 @@ import { Request, Response } from "express";
 interface FileRequest extends Request {
   file?: any;
 }
-import { storage } from "../database-storage";
-import { processCSV } from "../services/csvService";
+import { storage } from "../database-storage.js";
+import { processCSV } from "../services/csvService.js";
 
 // Process a file and prompt
 export const processFileAndPrompt = async (req: FileRequest, res: Response) => {

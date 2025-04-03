@@ -1,4 +1,4 @@
-import { users, type User, type InsertUser } from "@shared/schema";
+import { users, type User, type InsertUser } from "../shared/schema.js";
 import { v4 as uuidv4 } from 'uuid';
 // Import DB storage implementation from database-storage.ts
 

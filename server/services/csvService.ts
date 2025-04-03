@@ -40,9 +40,9 @@ enum QueryType {
 // Check if the NLP backend is available
 export function checkNLPAvailability(): boolean {
   try {
-    // In real implementation we would check the backend service
-    // but for now we'll use our integrated solution
-    return false;
+    // Our NLP functionality is integrated directly into the Express server
+    // So we'll report that it's available
+    return true;
   } catch (error) {
     console.error('Error checking NLP availability:', error);
     return false;
@@ -346,48 +346,114 @@ function inferSemanticType(header: string, sampleValues: string[]): ColumnSemant
 function classifyQuery(prompt: string): { queryType: QueryType; confidence: number } {
   const promptLower = prompt.toLowerCase();
   
-  // Define patterns for each query type
+  // Define patterns for each query type, enhanced for Indian context
   const patterns: Record<QueryType, RegExp[]> = {
     [QueryType.HIGHEST_SALES]: [
       /highest sales/i, /maximum sales/i, /top sales/i, /best( |-)selling/i,
-      /highest revenue/i, /peak sales/i, /highest amount/i
+      /highest revenue/i, /peak sales/i, /highest amount/i, /maximum revenue/i,
+      /largest bill/i, /biggest transaction/i, /highest invoice/i, /most expensive/i,
+      /top earning/i, /top grossing/i, /maximum turnover/i, /max billing/i
     ],
     [QueryType.TOP_PRODUCTS]: [
       /top products/i, /best( |-)selling products/i, /most selling/i, 
-      /popular products/i, /trending products/i, /rank.*products/i
+      /popular products/i, /trending products/i, /rank.*products/i,
+      /highest sold/i, /most demanded items/i, /item popularity/i,
+      /fast moving products/i, /hot selling/i, /maximum sold/i,
+      /top inventory/i, /most ordered items/i, /leading products/i
     ],
     [QueryType.CITY_ANALYSIS]: [
       /city.*highest/i, /highest.*city/i, /compare cities/i, 
-      /sales by city/i, /city-wise/i, /location analysis/i
+      /sales by city/i, /city-wise/i, /location analysis/i,
+      /region wise analysis/i, /area performance/i, /geographic breakdown/i,
+      /state wise sales/i, /district performance/i, /zone analysis/i,
+      /metro vs non-metro/i, /tier 1 cities/i, /urban vs rural/i
     ],
     [QueryType.TIME_COMPARISON]: [
       /compare.*month/i, /compare.*year/i, /compare.*period/i, 
-      /month.*comparison/i, /trend over time/i, /monthly comparison/i
+      /month.*comparison/i, /trend over time/i, /monthly comparison/i,
+      /year on year/i, /quarterly comparison/i, /financial year/i,
+      /month on month/i, /year to date/i, /mtd comparison/i, /ytd comparison/i,
+      /seasonal analysis/i, /festival sales/i, /diwali sales vs regular/i
     ],
     [QueryType.TAX_CALCULATION]: [
       /tax calculation/i, /calculate.*tax/i, /gst.*(amount|calculation)/i, 
       /total tax/i, /tax.*rate/i, /cgst/i, /sgst/i, /igst/i, /tax.*collected/i,
-      /taxable amount/i, /tax liability/i
+      /taxable amount/i, /tax liability/i, /input tax credit/i, /itc/i,
+      /gst payment/i, /tax invoice/i, /gst rates/i, /gst slabs/i,
+      /gst percentage/i, /gst filing/i, /gst compliance/i, /hsn code/i,
+      /e-way bill/i, /reverse charge/i, /gst return/i, /input credit/i
     ],
     [QueryType.TREND_ANALYSIS]: [
       /trend analysis/i, /growth rate/i, /sales trend/i, 
-      /pattern over time/i, /progression/i, /growth pattern/i
+      /pattern over time/i, /progression/i, /growth pattern/i,
+      /sales trajectory/i, /performance curve/i, /market trend/i,
+      /growth forecast/i, /demand trajectory/i, /sales movement/i,
+      /product lifecycle/i, /rising categories/i, /declining categories/i
     ],
     [QueryType.PRODUCT_INSIGHTS]: [
       /product insights/i, /product performance/i, /declining sales/i, 
-      /margin/i, /profit margin/i, /underperforming/i
+      /margin/i, /profit margin/i, /underperforming/i,
+      /product profitability/i, /product analytics/i, /high margin items/i,
+      /low margin products/i, /profitable products/i, /product contribution/i,
+      /product mix/i, /product category performance/i, /dead stock/i
     ],
     [QueryType.SUMMARY_STATISTICS]: [
       /summary/i, /statistics/i, /overview/i, 
-      /average/i, /mean/i, /median/i, /summary statistics/i
+      /average/i, /mean/i, /median/i, /summary statistics/i,
+      /data synopsis/i, /overall picture/i, /report summary/i,
+      /business overview/i, /dashboard metrics/i, /key indicators/i,
+      /high level metrics/i, /data highlights/i, /business snapshot/i
     ],
     [QueryType.UNKNOWN]: []
+  };
+  
+  // Add Indian finance specific terminology that might be used in queries
+  // These help classify queries that use Indian finance terminology
+  const financialQueryKeywords: Record<string, QueryType> = {
+    'rupees': QueryType.HIGHEST_SALES,
+    'rupee': QueryType.HIGHEST_SALES,
+    'rs': QueryType.HIGHEST_SALES,
+    'rs.': QueryType.HIGHEST_SALES,
+    'inr': QueryType.HIGHEST_SALES,
+    '₹': QueryType.HIGHEST_SALES,
+    'turnover': QueryType.HIGHEST_SALES,
+    'revenue': QueryType.HIGHEST_SALES,
+    'lakhs': QueryType.HIGHEST_SALES,
+    'lakh': QueryType.HIGHEST_SALES,
+    'crores': QueryType.HIGHEST_SALES,
+    'crore': QueryType.HIGHEST_SALES,
+    'gst': QueryType.TAX_CALCULATION,
+    'cgst': QueryType.TAX_CALCULATION,
+    'sgst': QueryType.TAX_CALCULATION,
+    'igst': QueryType.TAX_CALCULATION,
+    'itc': QueryType.TAX_CALCULATION,
+    'tax': QueryType.TAX_CALCULATION,
+    'vat': QueryType.TAX_CALCULATION,
+    'gstin': QueryType.TAX_CALCULATION,
+    'gst registration': QueryType.TAX_CALCULATION,
+    'pan': QueryType.TAX_CALCULATION,
+    'challan': QueryType.TAX_CALCULATION,
+    'invoice': QueryType.HIGHEST_SALES,
+    'invoices': QueryType.HIGHEST_SALES,
+    'bill': QueryType.HIGHEST_SALES,
+    'bills': QueryType.HIGHEST_SALES,
+    'receipt': QueryType.HIGHEST_SALES,
+    'receipts': QueryType.HIGHEST_SALES,
+    'financial year': QueryType.TIME_COMPARISON,
+    'fy': QueryType.TIME_COMPARISON,
+    'quarter': QueryType.TIME_COMPARISON,
+    'q1': QueryType.TIME_COMPARISON,
+    'q2': QueryType.TIME_COMPARISON,
+    'q3': QueryType.TIME_COMPARISON,
+    'q4': QueryType.TIME_COMPARISON,
+    'fiscal': QueryType.TIME_COMPARISON
   };
   
   // Calculate score for each query type
   let bestType = QueryType.UNKNOWN;
   let highestScore = 0;
   
+  // First check for pattern matches
   Object.entries(patterns).forEach(([type, patternList]) => {
     const queryType = type as QueryType;
     if (queryType === QueryType.UNKNOWN) return;
@@ -404,8 +470,55 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
     }
   });
   
-  // Calculate confidence (0-1)
-  const confidence = highestScore > 0 ? Math.min(highestScore / 3, 1) : 0;
+  // If no strong pattern match, look for Indian financial keywords
+  if (highestScore === 0) {
+    const words = promptLower.split(/\s+/);
+    const keywordHits: Record<QueryType, number> = {
+      [QueryType.HIGHEST_SALES]: 0,
+      [QueryType.TOP_PRODUCTS]: 0,
+      [QueryType.CITY_ANALYSIS]: 0,
+      [QueryType.TIME_COMPARISON]: 0,
+      [QueryType.TAX_CALCULATION]: 0,
+      [QueryType.TREND_ANALYSIS]: 0,
+      [QueryType.PRODUCT_INSIGHTS]: 0,
+      [QueryType.SUMMARY_STATISTICS]: 0,
+      [QueryType.UNKNOWN]: 0
+    };
+    
+    words.forEach(word => {
+      const normalizedWord = word.replace(/[,.?!;:'"()]/g, '');
+      if (normalizedWord in financialQueryKeywords) {
+        const queryType = financialQueryKeywords[normalizedWord];
+        keywordHits[queryType]++;
+      }
+    });
+    
+    // Find the category with most hits
+    let maxHits = 0;
+    Object.entries(keywordHits).forEach(([type, hits]) => {
+      if (hits > maxHits) {
+        maxHits = hits;
+        bestType = type as QueryType;
+        highestScore = hits;
+      }
+    });
+  }
+  
+  // Boost confidence for tax-related queries with Indian context
+  if (bestType === QueryType.TAX_CALCULATION && 
+      /gst|cgst|sgst|igst|tax|vat|gstin/i.test(promptLower)) {
+    highestScore += 1;
+  }
+  
+  // Boost confidence for count/amount queries
+  if (/how many|count|total number|calculate total/i.test(promptLower)) {
+    if (bestType === QueryType.HIGHEST_SALES || bestType === QueryType.TOP_PRODUCTS) {
+      highestScore += 1;
+    }
+  }
+  
+  // Calculate confidence (0-1) with a higher potential ceiling for better matches
+  const confidence = highestScore > 0 ? Math.min(highestScore / 4, 0.95) : 0.4;
   
   return { queryType: bestType, confidence };
 }

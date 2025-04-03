@@ -3,14 +3,13 @@ import {
   csvFiles, type CsvFile, type InsertCsvFile,
   chatSessions, type ChatSession, type InsertChatSession, 
   chatMessages, type ChatMessage, type InsertChatMessage
-} from "@shared/schema";
-import { IStorage } from "./storage";
-import { db } from "./db";
+} from "../shared/schema.js";
+import { IStorage } from "./storage.js";
+import { db } from "./db.js";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { v4 as uuidv4 } from 'uuid';
-import { writeFile, readFile } from 'fs/promises';
+import { writeFile, readFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { mkdir } from 'fs/promises';
 
 // Define the interface for uploaded files (matching the existing interface)
 interface UploadedFile {

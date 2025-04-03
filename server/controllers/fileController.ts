@@ -3,7 +3,7 @@ import { Request, Response } from "express";
 interface FileRequest extends Request {
   file?: any;
 }
-import { storage } from "../database-storage";
+import { storage } from "../database-storage.js";
 
 // Upload a file
 export const uploadFile = async (req: FileRequest, res: Response) => {
