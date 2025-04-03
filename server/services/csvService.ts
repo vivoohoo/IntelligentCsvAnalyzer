@@ -1,16 +1,47 @@
 import { execSync } from 'child_process';
-import path from 'path';
-import fs from 'fs';
-import os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import fetch from 'node-fetch';
 
-const DJANGO_API_URL = 'http://localhost:8000';
+// Configuration
+const NLP_API_URL = 'http://localhost:8000';
 
-// Check if the Python backend is available
+// Column semantic types for better financial data understanding
+enum ColumnSemanticType {
+  INVOICE_NUMBER = "invoice_number",
+  CUSTOMER_NAME = "customer_name",
+  DATE = "date",
+  AMOUNT = "amount",
+  TAX = "tax",
+  TAX_RATE = "tax_rate",
+  QUANTITY = "quantity",
+  PRODUCT = "product",
+  CITY = "city",
+  STATE = "state",
+  GSTIN = "gstin",
+  PAN = "pan",
+  UNKNOWN = "unknown"
+}
+
+// Query types based on Indian financial context
+enum QueryType {
+  HIGHEST_SALES = "highest_sales",
+  TOP_PRODUCTS = "top_products",
+  CITY_ANALYSIS = "city_analysis",
+  TIME_COMPARISON = "time_comparison",
+  TAX_CALCULATION = "tax_calculation",
+  TREND_ANALYSIS = "trend_analysis",
+  PRODUCT_INSIGHTS = "product_insights",
+  SUMMARY_STATISTICS = "summary_statistics",
+  UNKNOWN = "unknown"
+}
+
+// Check if the NLP backend is available
 export function checkNLPAvailability(): boolean {
   try {
-    // Since we're developing without Django for now, return false
-    // to use the fallback CSV processing implementation
+    // In real implementation we would check the backend service
+    // but for now we'll use our integrated solution
     return false;
   } catch (error) {
     console.error('Error checking NLP availability:', error);
@@ -25,137 +56,1552 @@ export async function processCSV(
   chatHistory: Array<{role: string, content: string}> = []
 ): Promise<string> {
   try {
-    // Always use our fallback processing for now since we're developing
-    // the prototype without the Django backend
-    return fallbackCSVProcessing(csvData, prompt, chatHistory);
+    return enhancedCSVProcessing(csvData, prompt, chatHistory);
   } catch (error) {
     console.error('Error processing CSV:', error);
     return `I'm having trouble processing your request. ${error instanceof Error ? error.message : 'Please try again later.'}`;
   }
 }
 
-// CSV processing function for analyzing data
-async function fallbackCSVProcessing(
+// Enhanced CSV processing function with financial data analysis capabilities
+async function enhancedCSVProcessing(
   csvData: Buffer | null, 
   prompt: string,
   chatHistory: Array<{role: string, content: string}> = []
 ): Promise<string> {
   // If no file is provided, return general information
   if (!csvData) {
-    if (prompt.toLowerCase().includes('invoice') || 
-        prompt.toLowerCase().includes('bill') || 
-        prompt.toLowerCase().includes('transaction') ||
-        prompt.toLowerCase().includes('GST') ||
-        prompt.toLowerCase().includes('tax')) {
-      return "I need a CSV file to analyze invoices or transactions. Please upload a file with your financial data first.";
+    if (isFinancialQuery(prompt)) {
+      return "I need a CSV file to analyze financial data. Please upload a file with your financial, invoice, or transaction information first.";
     }
     
-    return "I'm designed to analyze CSV data. Please upload a CSV file to continue.";
+    return "I'm designed to analyze CSV data with a focus on Indian financial contexts. Please upload a CSV file to continue.";
   }
   
   try {
-    // Parse CSV data
-    const csvContent = csvData.toString('utf-8');
-    const lines = csvContent.split('\n').filter(line => line.trim());
-    const headers = lines[0].split(',').map(h => h.trim());
-    
-    // Convert CSV rows to objects for easier analysis
-    const data: Record<string, string>[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      if (!lines[i].trim()) continue;
-      
-      const values = lines[i].split(',').map(v => v.trim());
-      const row: Record<string, string> = {};
-      
-      headers.forEach((header, index) => {
-        row[header] = values[index] || '';
-      });
-      
-      data.push(row);
-    }
+    // Parse CSV data with enhanced parsing to handle different formats
+    const { data, headers, columnTypes, columnSemanticTypes } = parseCSV(csvData);
     
     // Count the number of rows
     const rowCount = data.length;
     
-    // Detect types of columns
-    const columnTypes: Record<string, string> = {};
-    headers.forEach(header => {
-      // Check sample values to determine column type
-      const sampleValues = data.slice(0, Math.min(5, data.length)).map(row => row[header]);
-      
-      // Check if column contains mostly numbers
-      const numericCount = sampleValues.filter(v => !isNaN(Number(v)) && v.trim() !== '').length;
-      
-      if (numericCount >= sampleValues.length / 2) {
-        columnTypes[header] = 'numeric';
-      } else if (
-        header.toLowerCase().includes('date') || 
-        sampleValues.some(v => /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/.test(v))
-      ) {
-        columnTypes[header] = 'date';
-      } else {
-        columnTypes[header] = 'text';
-      }
-    });
+    // Classify the query type
+    const queryClassification = classifyQuery(prompt);
     
-    // Handle different query types
+    // Extract entity references (e.g., specific companies, products)
+    const entityReferences = extractEntityReferences(prompt, data, headers);
     
-    // Count queries (how many, total number of, etc.)
-    const isCountQuery = prompt.toLowerCase().match(/how many|count|total number|find the number|number of/);
-    
-    // Invoice/bill/transaction related queries
-    const isInvoiceQuery = prompt.toLowerCase().match(/invoice|bill|receipt|challan|voucher|record|entry/);
-    
-    // Tax or GST related queries (specific to Indian context)
-    const isTaxQuery = prompt.toLowerCase().match(/tax|gst|cgst|sgst|igst|tds|pan|aadhaar/);
-    
-    // Time-based queries
-    const isTimeQuery = prompt.toLowerCase().match(/month|year|quarter|date|period|time/);
-    
-    // Handle specific query combinations
-    if (isCountQuery && isInvoiceQuery) {
-      return `I found ${rowCount} records in your CSV file. Each row likely represents a separate invoice or transaction.`;
+    // Process query based on classification
+    switch (queryClassification.queryType) {
+      case QueryType.TAX_CALCULATION:
+        return handleTaxQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.HIGHEST_SALES:
+        return handleHighestSalesQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.TOP_PRODUCTS:
+        return handleTopProductsQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.CITY_ANALYSIS:
+        return handleCityAnalysisQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.TIME_COMPARISON:
+        return handleTimeComparisonQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.TREND_ANALYSIS:
+        return handleTrendAnalysisQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.PRODUCT_INSIGHTS:
+        return handleProductInsightsQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      case QueryType.SUMMARY_STATISTICS:
+        return handleSummaryStatisticsQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
+        
+      default:
+        // Handle count queries (how many, total number of, etc.)
+        if (isCountQuery(prompt)) {
+          if (isInvoiceQuery(prompt)) {
+            return `I found ${rowCount} records in your CSV file. Each row likely represents a separate invoice or transaction.`;
+          }
+          
+          // Handle specific entity count queries
+          if (entityReferences.specificEntities.length > 0) {
+            const entity = entityReferences.specificEntities[0];
+            let count = 0;
+            
+            // Search for entity in all columns
+            for (const row of data) {
+              if (Object.values(row).some(value => 
+                value.toLowerCase().includes(entity.toLowerCase())
+              )) {
+                count++;
+              }
+            }
+            
+            return `I found ${count} records related to "${entity}" in your data.`;
+          }
+          
+          return `Your CSV file contains ${rowCount} records in total.`;
+        }
+        
+        // Default response with enhanced file information
+        return generateDefaultResponse(data, headers, columnTypes, columnSemanticTypes);
     }
-    
-    // Handle basic tax and GST queries (common in Indian financial data)
-    if (isTaxQuery) {
-      // Look for tax or GST related columns
-      const taxColumns = headers.filter(h => 
-        h.toLowerCase().includes('tax') || 
-        h.toLowerCase().includes('gst') || 
-        h.toLowerCase().includes('cgst') || 
-        h.toLowerCase().includes('sgst') || 
-        h.toLowerCase().includes('igst')
-      );
-      
-      if (taxColumns.length > 0) {
-        return `I found the following tax-related columns in your data: ${taxColumns.join(', ')}. What specific tax information would you like to analyze?`;
-      } else {
-        return `I couldn't find specific tax or GST columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain tax information?`;
-      }
-    }
-    
-    // Handle time-based queries
-    if (isTimeQuery) {
-      // Look for date or time related columns
-      const dateColumns = headers.filter(h => 
-        h.toLowerCase().includes('date') || 
-        h.toLowerCase().includes('time') || 
-        h.toLowerCase().includes('month') || 
-        h.toLowerCase().includes('year') ||
-        columnTypes[h] === 'date'
-      );
-      
-      if (dateColumns.length > 0) {
-        return `I found date-related columns in your data: ${dateColumns.join(', ')}. What specific time period would you like to analyze?`;
-      }
-    }
-    
-    // Default response with file information
-    return `I've analyzed your CSV data with ${rowCount} rows and ${headers.length} columns. The columns are: ${headers.join(', ')}. 
-You can ask me specific questions about this data, such as counting invoices, analyzing tax information, or finding entries for specific time periods.`;
   } catch (error) {
     console.error('Error in CSV processing:', error);
     return "I had trouble parsing your CSV file. Please make sure it's properly formatted with comma-separated values.";
   }
+}
+
+// Parse CSV with enhanced detection of formats
+function parseCSV(csvData: Buffer) {
+  const csvContent = csvData.toString('utf-8');
+  
+  // Try to detect the delimiter
+  const firstLine = csvContent.split('\n')[0];
+  let delimiter = ',';
+  
+  // Count occurrences of potential delimiters
+  const delimiters = [',', ';', '\t', '|'];
+  const counts = delimiters.map(d => (firstLine.match(new RegExp(d, 'g')) || []).length);
+  
+  // Use the delimiter with the highest count
+  const maxIndex = counts.indexOf(Math.max(...counts));
+  if (maxIndex !== -1 && counts[maxIndex] > 0) {
+    delimiter = delimiters[maxIndex];
+  }
+  
+  // Split lines and filter out empty ones
+  const lines = csvContent.split('\n').filter(line => line.trim());
+  
+  // Extract headers and clean them
+  const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+  
+  // Convert CSV rows to objects for easier analysis
+  const data: Record<string, string>[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    
+    // Handle quoted values properly
+    const values: string[] = [];
+    let currentValue = '';
+    let inQuotes = false;
+    
+    for (let j = 0; j < lines[i].length; j++) {
+      const char = lines[i][j];
+      
+      if (char === '"' && (j === 0 || lines[i][j-1] !== '\\')) {
+        inQuotes = !inQuotes;
+      } else if (char === delimiter && !inQuotes) {
+        values.push(currentValue.trim().replace(/^["']|["']$/g, ''));
+        currentValue = '';
+      } else {
+        currentValue += char;
+      }
+    }
+    
+    // Add the last value
+    values.push(currentValue.trim().replace(/^["']|["']$/g, ''));
+    
+    // Create row object
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = index < values.length ? values[index] : '';
+    });
+    
+    data.push(row);
+  }
+  
+  // Detect column types
+  const columnTypes: Record<string, string> = {};
+  const columnSemanticTypes: Record<string, ColumnSemanticType> = {};
+  
+  headers.forEach(header => {
+    // Check sample values to determine column type
+    const sampleValues = data.slice(0, Math.min(10, data.length)).map(row => row[header]);
+    
+    // Check if column contains mostly numbers
+    const numericCount = sampleValues.filter(v => !isNaN(Number(v.replace(/,/g, ''))) && v.trim() !== '').length;
+    
+    // Determine column type
+    if (numericCount >= sampleValues.length / 2) {
+      columnTypes[header] = 'numeric';
+    } else if (
+      header.toLowerCase().includes('date') || 
+      sampleValues.some(v => isDateString(v))
+    ) {
+      columnTypes[header] = 'date';
+    } else {
+      columnTypes[header] = 'text';
+    }
+    
+    // Determine semantic type
+    columnSemanticTypes[header] = inferSemanticType(header, sampleValues);
+  });
+  
+  return { data, headers, columnTypes, columnSemanticTypes };
+}
+
+// Check if a string resembles a date (including Indian date formats)
+function isDateString(str: string): boolean {
+  // Check for common date formats (including Indian formats)
+  const datePatterns = [
+    /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/, // DD/MM/YYYY or MM/DD/YYYY
+    /^\d{2,4}[-/]\d{1,2}[-/]\d{1,2}$/, // YYYY/MM/DD
+    /^\d{1,2}[-\s][A-Za-z]{3,9}[-\s]\d{2,4}$/, // DD MMM YYYY or DD Month YYYY
+    /^[A-Za-z]{3,9}[-\s]\d{1,2}[-\s]\d{2,4}$/, // Month DD YYYY or MMM DD YYYY
+  ];
+  
+  return datePatterns.some(pattern => pattern.test(str.trim()));
+}
+
+// Infer semantic meaning of a column based on header name and sample values
+function inferSemanticType(header: string, sampleValues: string[]): ColumnSemanticType {
+  const headerLower = header.toLowerCase();
+  
+  // Invoice number detection
+  if (headerLower.includes('invoice') || headerLower.includes('bill') || 
+      headerLower.includes('receipt') || headerLower === 'no.' || 
+      headerLower === 'no' || headerLower.includes('number')) {
+    return ColumnSemanticType.INVOICE_NUMBER;
+  }
+  
+  // Customer name detection
+  if (headerLower.includes('customer') || headerLower.includes('client') || 
+      headerLower.includes('buyer') || headerLower.includes('party') ||
+      headerLower.includes('name') || headerLower.includes('account')) {
+    return ColumnSemanticType.CUSTOMER_NAME;
+  }
+  
+  // Date detection
+  if (headerLower.includes('date') || headerLower.includes('time') || 
+      headerLower.includes('day') || headerLower.includes('month') || 
+      headerLower.includes('year') || sampleValues.some(v => isDateString(v))) {
+    return ColumnSemanticType.DATE;
+  }
+  
+  // Amount detection
+  if (headerLower.includes('amount') || headerLower.includes('value') || 
+      headerLower.includes('total') || headerLower.includes('price') || 
+      headerLower.includes('cost') || headerLower.includes('fee') ||
+      headerLower.includes('charge') || headerLower.includes('sum') ||
+      headerLower.includes('rs.') || headerLower.includes('inr') ||
+      headerLower.includes('₹')) {
+    return ColumnSemanticType.AMOUNT;
+  }
+  
+  // Tax detection
+  if (headerLower.includes('tax') || headerLower.includes('gst') || 
+      headerLower.includes('cgst') || headerLower.includes('sgst') || 
+      headerLower.includes('igst') || headerLower.includes('vat') ||
+      headerLower.includes('cess')) {
+    if (headerLower.includes('rate') || headerLower.includes('%')) {
+      return ColumnSemanticType.TAX_RATE;
+    }
+    return ColumnSemanticType.TAX;
+  }
+  
+  // Quantity detection
+  if (headerLower.includes('qty') || headerLower.includes('quantity') || 
+      headerLower.includes('count') || headerLower.includes('units') ||
+      headerLower.includes('pieces') || headerLower.includes('nos')) {
+    return ColumnSemanticType.QUANTITY;
+  }
+  
+  // Product detection
+  if (headerLower.includes('product') || headerLower.includes('item') || 
+      headerLower.includes('good') || headerLower.includes('commodity') ||
+      headerLower.includes('service') || headerLower.includes('description')) {
+    return ColumnSemanticType.PRODUCT;
+  }
+  
+  // City detection
+  if (headerLower.includes('city') || headerLower.includes('town') || 
+      headerLower.includes('place') || headerLower === 'loc' || 
+      headerLower === 'location') {
+    return ColumnSemanticType.CITY;
+  }
+  
+  // State detection
+  if (headerLower.includes('state') || headerLower.includes('province') || 
+      headerLower.includes('region')) {
+    return ColumnSemanticType.STATE;
+  }
+  
+  // GSTIN detection
+  if (headerLower.includes('gstin') || headerLower.includes('gst no') || 
+      headerLower.includes('tax id') || headerLower.includes('tax identification')) {
+    return ColumnSemanticType.GSTIN;
+  }
+  
+  // PAN detection
+  if (headerLower.includes('pan') || headerLower === 'permanent account number') {
+    return ColumnSemanticType.PAN;
+  }
+  
+  return ColumnSemanticType.UNKNOWN;
+}
+
+// Query classification
+function classifyQuery(prompt: string): { queryType: QueryType; confidence: number } {
+  const promptLower = prompt.toLowerCase();
+  
+  // Define patterns for each query type
+  const patterns: Record<QueryType, RegExp[]> = {
+    [QueryType.HIGHEST_SALES]: [
+      /highest sales/i, /maximum sales/i, /top sales/i, /best( |-)selling/i,
+      /highest revenue/i, /peak sales/i, /highest amount/i
+    ],
+    [QueryType.TOP_PRODUCTS]: [
+      /top products/i, /best( |-)selling products/i, /most selling/i, 
+      /popular products/i, /trending products/i, /rank.*products/i
+    ],
+    [QueryType.CITY_ANALYSIS]: [
+      /city.*highest/i, /highest.*city/i, /compare cities/i, 
+      /sales by city/i, /city-wise/i, /location analysis/i
+    ],
+    [QueryType.TIME_COMPARISON]: [
+      /compare.*month/i, /compare.*year/i, /compare.*period/i, 
+      /month.*comparison/i, /trend over time/i, /monthly comparison/i
+    ],
+    [QueryType.TAX_CALCULATION]: [
+      /tax calculation/i, /calculate.*tax/i, /gst.*(amount|calculation)/i, 
+      /total tax/i, /tax.*rate/i, /cgst/i, /sgst/i, /igst/i, /tax.*collected/i,
+      /taxable amount/i, /tax liability/i
+    ],
+    [QueryType.TREND_ANALYSIS]: [
+      /trend analysis/i, /growth rate/i, /sales trend/i, 
+      /pattern over time/i, /progression/i, /growth pattern/i
+    ],
+    [QueryType.PRODUCT_INSIGHTS]: [
+      /product insights/i, /product performance/i, /declining sales/i, 
+      /margin/i, /profit margin/i, /underperforming/i
+    ],
+    [QueryType.SUMMARY_STATISTICS]: [
+      /summary/i, /statistics/i, /overview/i, 
+      /average/i, /mean/i, /median/i, /summary statistics/i
+    ],
+    [QueryType.UNKNOWN]: []
+  };
+  
+  // Calculate score for each query type
+  let bestType = QueryType.UNKNOWN;
+  let highestScore = 0;
+  
+  Object.entries(patterns).forEach(([type, patternList]) => {
+    const queryType = type as QueryType;
+    if (queryType === QueryType.UNKNOWN) return;
+    
+    // Calculate match score
+    const score = patternList.reduce((sum, pattern) => {
+      return sum + (pattern.test(promptLower) ? 1 : 0);
+    }, 0);
+    
+    // Update best match if needed
+    if (score > highestScore) {
+      highestScore = score;
+      bestType = queryType;
+    }
+  });
+  
+  // Calculate confidence (0-1)
+  const confidence = highestScore > 0 ? Math.min(highestScore / 3, 1) : 0;
+  
+  return { queryType: bestType, confidence };
+}
+
+// Extract entity references from a query
+function extractEntityReferences(
+  prompt: string,
+  data: Record<string, string>[],
+  headers: string[]
+): { 
+  specificEntities: string[];
+  dateRange: { start?: string; end?: string } | null;
+  thresholds: Record<string, number>;
+  filters: Record<string, string | number | string[]>;
+} {
+  const result = {
+    specificEntities: [] as string[],
+    dateRange: null as { start?: string; end?: string } | null,
+    thresholds: {} as Record<string, number>,
+    filters: {} as Record<string, string | number | string[]>
+  };
+  
+  const promptLower = prompt.toLowerCase();
+  
+  // Extract specific entities (company names, product names, etc.)
+  // First try to find quoted entities
+  const quotedEntities = prompt.match(/"([^"]+)"|'([^']+)'/g);
+  if (quotedEntities) {
+    quotedEntities.forEach(entity => {
+      // Remove quotes
+      const cleanEntity = entity.replace(/^["']|["']$/g, '');
+      result.specificEntities.push(cleanEntity);
+    });
+  }
+  
+  // If no quoted entities, try to find important entities based on data
+  if (result.specificEntities.length === 0) {
+    // For each distinct value in text columns, check if it appears in the prompt
+    const textColumns = headers.filter(header => 
+      !promptLower.includes(header.toLowerCase())
+    );
+    
+    // Extract unique values from text columns
+    const uniqueValues = new Set<string>();
+    data.forEach(row => {
+      textColumns.forEach(col => {
+        const value = row[col];
+        if (value && value.length > 3) { 
+          uniqueValues.add(value);
+        }
+      });
+    });
+    
+    // Check if any unique value appears in the prompt
+    uniqueValues.forEach(value => {
+      if (promptLower.includes(value.toLowerCase())) {
+        result.specificEntities.push(value);
+      }
+    });
+  }
+  
+  // Extract date ranges
+  const dateRangePatterns = [
+    // Between date1 and date2
+    /between\s+(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+and\s+(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})/i,
+    // From date1 to date2
+    /from\s+(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\s+to\s+(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})/i,
+    // Month/period names
+    /(january|february|march|april|may|june|july|august|september|october|november|december)\s+to\s+(january|february|march|april|may|june|july|august|september|october|november|december)/i,
+    // Year ranges
+    /(20\d{2})\s+to\s+(20\d{2})/i,
+    // Indian date format ranges (dd-mm-yyyy)
+    /(\d{1,2}-\d{1,2}-\d{4})\s+to\s+(\d{1,2}-\d{1,2}-\d{4})/i
+  ];
+  
+  for (const pattern of dateRangePatterns) {
+    const match = promptLower.match(pattern);
+    if (match) {
+      result.dateRange = { start: match[1], end: match[2] };
+      break;
+    }
+  }
+  
+  // Extract thresholds (e.g., > 1000, less than 500)
+  const thresholdPatterns = [
+    /(?:more than|greater than|above|over|>)\s+(\d+(?:,\d+)*(?:\.\d+)?)/i,
+    /(?:less than|lower than|below|under|<)\s+(\d+(?:,\d+)*(?:\.\d+)?)/i,
+    /(?:at least|minimum|min)\s+(\d+(?:,\d+)*(?:\.\d+)?)/i,
+    /(?:at most|maximum|max)\s+(\d+(?:,\d+)*(?:\.\d+)?)/i
+  ];
+  
+  thresholdPatterns.forEach((pattern, index) => {
+    const match = promptLower.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1].replace(/,/g, ''));
+      
+      if (index === 0) result.thresholds.min = value;
+      else if (index === 1) result.thresholds.max = value;
+      else if (index === 2) result.thresholds.min = value;
+      else if (index === 3) result.thresholds.max = value;
+    }
+  });
+  
+  // Extract filters (e.g., where city is Mumbai)
+  // This is a simplified implementation - a robust solution would use NLP
+  headers.forEach(header => {
+    const headerLower = header.toLowerCase();
+    if (promptLower.includes(headerLower)) {
+      // Check for patterns like "where [header] is [value]" or "[header] equals [value]"
+      const patterns = [
+        new RegExp(`${headerLower}\\s+(?:is|=|equals|equal to)\\s+["']?([\\w\\s]+?)["']?(?:\\s|$|,|\\.)`),
+        new RegExp(`${headerLower}\\s+(?:in|contains)\\s+["']?([\\w\\s]+?)["']?(?:\\s|$|,|\\.)`),
+        new RegExp(`${headerLower}\\s+(?:starts with|begins with)\\s+["']?([\\w\\s]+?)["']?(?:\\s|$|,|\\.)`),
+        new RegExp(`${headerLower}\\s+(?:ends with)\\s+["']?([\\w\\s]+?)["']?(?:\\s|$|,|\\.)`)
+      ];
+      
+      for (const pattern of patterns) {
+        const match = promptLower.match(pattern);
+        if (match) {
+          result.filters[header] = match[1].trim();
+          break;
+        }
+      }
+    }
+  });
+  
+  return result;
+}
+
+// Check if a query is related to counting
+function isCountQuery(prompt: string): boolean {
+  const countPatterns = [
+    /how many/i, /count/i, /total number/i, /find the number/i, 
+    /number of/i, /quantity of/i, /sum of/i, /tally/i
+  ];
+  
+  return countPatterns.some(pattern => pattern.test(prompt));
+}
+
+// Check if a query is related to invoices
+function isInvoiceQuery(prompt: string): boolean {
+  const invoicePatterns = [
+    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, 
+    /record/i, /entry/i, /transaction/i
+  ];
+  
+  return invoicePatterns.some(pattern => pattern.test(prompt));
+}
+
+// Check if a query is related to finances in any way
+function isFinancialQuery(prompt: string): boolean {
+  const financialPatterns = [
+    /invoice/i, /bill/i, /receipt/i, /transaction/i, /tax/i, /gst/i, 
+    /amount/i, /payment/i, /money/i, /finance/i, /financial/i, /price/i,
+    /revenue/i, /income/i, /expense/i, /sales/i, /purchase/i, /cost/i,
+    /profit/i, /balance/i, /account/i, /ledger/i, /credit/i, /debit/i,
+    /cash/i, /bank/i, /budget/i, /fiscal/i, /roi/i, /investment/i
+  ];
+  
+  return financialPatterns.some(pattern => pattern.test(prompt));
+}
+
+// Handle tax query
+function handleTaxQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find tax-related columns
+  const taxColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.TAX ||
+    columnSemanticTypes[header] === ColumnSemanticType.TAX_RATE
+  );
+  
+  // If no tax columns found, look for any other potential columns
+  if (taxColumns.length === 0) {
+    return `I couldn't find specific tax columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain tax information?`;
+  }
+  
+  // Calculate total tax
+  let totalTax = 0;
+  let taxableAmount = 0;
+  
+  // Find tax amount columns
+  const taxAmountColumns = taxColumns.filter(column => 
+    columnSemanticTypes[column] === ColumnSemanticType.TAX
+  );
+  
+  // Find amount columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  // If we have tax amount columns, sum them up
+  if (taxAmountColumns.length > 0) {
+    taxAmountColumns.forEach(column => {
+      data.forEach(row => {
+        const value = row[column].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim();
+        if (!isNaN(Number(value)) && value !== '') {
+          totalTax += Number(value);
+        }
+      });
+    });
+  }
+  
+  // If we have amount columns, calculate total taxable amount
+  if (amountColumns.length > 0) {
+    amountColumns.forEach(column => {
+      data.forEach(row => {
+        const value = row[column].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim();
+        if (!isNaN(Number(value)) && value !== '') {
+          taxableAmount += Number(value);
+        }
+      });
+    });
+  }
+  
+  // Check if the query specifically asks for taxable amount
+  if (prompt.toLowerCase().includes('taxable amount') || 
+      prompt.toLowerCase().includes('taxable value') ||
+      prompt.toLowerCase().includes('tax base')) {
+    return `The total taxable amount across all records is ₹${taxableAmount.toFixed(2)}. This includes data from the following amount columns: ${amountColumns.join(', ')}.`;
+  }
+  
+  // If entity references exist, filter the data
+  if (entityReferences.specificEntities.length > 0) {
+    const entity = entityReferences.specificEntities[0];
+    let entityTax = 0;
+    let entityCount = 0;
+    
+    // Check for entity in all columns and recalculate tax
+    data.forEach(row => {
+      let matchesEntity = false;
+      
+      // Check if this row contains the entity
+      for (const column in row) {
+        if (row[column].toLowerCase().includes(entity.toLowerCase())) {
+          matchesEntity = true;
+          break;
+        }
+      }
+      
+      if (matchesEntity) {
+        entityCount++;
+        
+        // Sum up taxes for this entity
+        taxAmountColumns.forEach(column => {
+          const value = row[column].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim();
+          if (!isNaN(Number(value)) && value !== '') {
+            entityTax += Number(value);
+          }
+        });
+      }
+    });
+    
+    if (entityCount > 0) {
+      return `I found ${entityCount} records related to "${entity}". The total tax amount for these records is ₹${entityTax.toFixed(2)}.`;
+    } else {
+      return `I couldn't find any records related to "${entity}" in your data.`;
+    }
+  }
+  
+  // Regular tax calculation response
+  return `The total tax amount is ₹${totalTax.toFixed(2)}, calculated from the following tax columns: ${taxAmountColumns.join(', ')}. The total taxable value is ₹${taxableAmount.toFixed(2)}.`;
+}
+
+// Handle highest sales query
+function handleHighestSalesQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find amount and quantity columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  // If no amount or quantity columns found
+  if (amountColumns.length === 0 && quantityColumns.length === 0) {
+    return `I couldn't find sales amount or quantity columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain sales information?`;
+  }
+  
+  // Determine if we should use amount or quantity based on prompt
+  const useAmount = !prompt.toLowerCase().includes('quantity');
+  const relevantColumns = useAmount ? amountColumns : quantityColumns;
+  
+  if (relevantColumns.length === 0) {
+    return `I couldn't find ${useAmount ? 'amount' : 'quantity'} columns in your data. Available columns are: ${headers.join(', ')}.`;
+  }
+  
+  // Find product column if it exists
+  const productColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.PRODUCT
+  );
+  
+  // Find the highest value
+  let highestValue = 0;
+  let highestRow: Record<string, string> | null = null;
+  
+  relevantColumns.forEach(column => {
+    data.forEach(row => {
+      const value = parseFloat(row[column].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim());
+      if (!isNaN(value) && value > highestValue) {
+        highestValue = value;
+        highestRow = row;
+      }
+    });
+  });
+  
+  if (!highestRow) {
+    return `I couldn't find any valid sales ${useAmount ? 'amount' : 'quantity'} values in your data.`;
+  }
+  
+  // Construct response
+  let response = `The highest sales ${useAmount ? 'amount' : 'quantity'} is ${useAmount ? '₹' : ''}${highestValue.toFixed(useAmount ? 2 : 0)}.`;
+  
+  // Add product info if available
+  if (productColumns.length > 0 && highestRow) {
+    response += ` This is for the product "${highestRow[productColumns[0]]}".`;
+  }
+  
+  // Add date info if available
+  const dateColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.DATE
+  );
+  
+  if (dateColumns.length > 0 && highestRow) {
+    response += ` This occurred on ${highestRow[dateColumns[0]]}.`;
+  }
+  
+  return response;
+}
+
+// Handle top products query
+function handleTopProductsQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find product column
+  const productColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.PRODUCT
+  );
+  
+  if (productColumns.length === 0) {
+    return `I couldn't find product columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which column contains product information?`;
+  }
+  
+  const productColumn = productColumns[0];
+  
+  // Find amount and quantity columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  // If no amount or quantity columns found
+  if (amountColumns.length === 0 && quantityColumns.length === 0) {
+    return `I couldn't find sales amount or quantity columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain sales information?`;
+  }
+  
+  // Determine if we should use amount or quantity based on prompt
+  const useAmount = !prompt.toLowerCase().includes('quantity');
+  const relevantColumns = useAmount ? amountColumns : quantityColumns;
+  
+  if (relevantColumns.length === 0) {
+    return `I couldn't find ${useAmount ? 'amount' : 'quantity'} columns in your data. Available columns are: ${headers.join(', ')}.`;
+  }
+  
+  const valueColumn = relevantColumns[0];
+  
+  // Aggregate data by product
+  const productTotals: Record<string, number> = {};
+  
+  data.forEach(row => {
+    const product = row[productColumn];
+    if (!product) return;
+    
+    const value = parseFloat(row[valueColumn].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim());
+    if (isNaN(value)) return;
+    
+    if (!productTotals[product]) {
+      productTotals[product] = 0;
+    }
+    
+    productTotals[product] += value;
+  });
+  
+  // Sort products by total value
+  const sortedProducts = Object.entries(productTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5); // Get top 5
+  
+  if (sortedProducts.length === 0) {
+    return `I couldn't find any valid product sales data.`;
+  }
+  
+  // Construct response
+  let response = `The top ${Math.min(5, sortedProducts.length)} products by ${useAmount ? 'sales amount' : 'quantity'} are:\n`;
+  
+  sortedProducts.forEach((product, index) => {
+    response += `${index + 1}. ${product[0]}: ${useAmount ? '₹' : ''}${product[1].toFixed(useAmount ? 2 : 0)}\n`;
+  });
+  
+  return response;
+}
+
+// Handle city analysis query
+function handleCityAnalysisQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find city column
+  const cityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.CITY
+  );
+  
+  if (cityColumns.length === 0) {
+    return `I couldn't find city columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which column contains city information?`;
+  }
+  
+  const cityColumn = cityColumns[0];
+  
+  // Find amount and quantity columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  // If no amount or quantity columns found
+  if (amountColumns.length === 0 && quantityColumns.length === 0) {
+    return `I couldn't find sales amount or quantity columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain sales information?`;
+  }
+  
+  // Determine if we should use amount or quantity based on prompt
+  const useAmount = !prompt.toLowerCase().includes('quantity');
+  const relevantColumns = useAmount ? amountColumns : quantityColumns;
+  
+  if (relevantColumns.length === 0) {
+    return `I couldn't find ${useAmount ? 'amount' : 'quantity'} columns in your data. Available columns are: ${headers.join(', ')}.`;
+  }
+  
+  const valueColumn = relevantColumns[0];
+  
+  // Check if analysis is for a specific product
+  let specificProduct = null;
+  if (entityReferences.specificEntities.length > 0) {
+    specificProduct = entityReferences.specificEntities[0];
+  }
+  
+  // Find product column if needed
+  let productColumn = null;
+  if (specificProduct) {
+    const productColumns = headers.filter(header => 
+      columnSemanticTypes[header] === ColumnSemanticType.PRODUCT
+    );
+    
+    if (productColumns.length > 0) {
+      productColumn = productColumns[0];
+    }
+  }
+  
+  // Aggregate data by city
+  const cityTotals: Record<string, number> = {};
+  
+  data.forEach(row => {
+    const city = row[cityColumn];
+    if (!city) return;
+    
+    // Skip if not matching specific product
+    if (specificProduct && productColumn) {
+      const product = row[productColumn];
+      if (!product || !product.toLowerCase().includes(specificProduct.toLowerCase())) {
+        return;
+      }
+    }
+    
+    const value = parseFloat(row[valueColumn].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim());
+    if (isNaN(value)) return;
+    
+    if (!cityTotals[city]) {
+      cityTotals[city] = 0;
+    }
+    
+    cityTotals[city] += value;
+  });
+  
+  // Sort cities by total value
+  const sortedCities = Object.entries(cityTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5); // Get top 5
+  
+  if (sortedCities.length === 0) {
+    return `I couldn't find any valid city sales data${specificProduct ? ` for "${specificProduct}"` : ''}.`;
+  }
+  
+  // Construct response
+  let response = `The top ${Math.min(5, sortedCities.length)} cities by ${useAmount ? 'sales amount' : 'quantity'}${specificProduct ? ` for "${specificProduct}"` : ''} are:\n`;
+  
+  sortedCities.forEach((city, index) => {
+    response += `${index + 1}. ${city[0]}: ${useAmount ? '₹' : ''}${city[1].toFixed(useAmount ? 2 : 0)}\n`;
+  });
+  
+  return response;
+}
+
+// Handle time comparison query
+function handleTimeComparisonQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find date column
+  const dateColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.DATE
+  );
+  
+  if (dateColumns.length === 0) {
+    return `I couldn't find date columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which column contains date information?`;
+  }
+  
+  const dateColumn = dateColumns[0];
+  
+  // Find amount and quantity columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  // If no amount or quantity columns found
+  if (amountColumns.length === 0 && quantityColumns.length === 0) {
+    return `I couldn't find sales amount or quantity columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain sales information?`;
+  }
+  
+  // Determine if we should use amount or quantity based on prompt
+  const useAmount = !prompt.toLowerCase().includes('quantity');
+  const relevantColumns = useAmount ? amountColumns : quantityColumns;
+  
+  if (relevantColumns.length === 0) {
+    return `I couldn't find ${useAmount ? 'amount' : 'quantity'} columns in your data. Available columns are: ${headers.join(', ')}.`;
+  }
+  
+  const valueColumn = relevantColumns[0];
+  
+  // Extract months or time periods from data
+  const timePeriods = new Set<string>();
+  const timeValues: Record<string, number> = {};
+  
+  data.forEach(row => {
+    const dateStr = row[dateColumn];
+    if (!dateStr) return;
+    
+    // Try to extract month/year or period
+    let period = '';
+    
+    // Try different date formats
+    try {
+      const dateParts = dateStr.split(/[-/]/);
+      if (dateParts.length >= 3) {
+        // Assume it's DD/MM/YYYY format (common in India)
+        const month = parseInt(dateParts[1]);
+        const year = parseInt(dateParts[2]);
+        if (!isNaN(month) && !isNaN(year)) {
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+          period = `${monthNames[month - 1]} ${year}`;
+        }
+      }
+    } catch (e) {
+      // Try another approach - extract just the month name if present
+      const monthMatch = dateStr.match(/(January|February|March|April|May|June|July|August|September|October|November|December)/i);
+      if (monthMatch) {
+        period = monthMatch[0];
+      }
+    }
+    
+    // If we couldn't extract a period, skip this row
+    if (!period) return;
+    
+    timePeriods.add(period);
+    
+    const value = parseFloat(row[valueColumn].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim());
+    if (isNaN(value)) return;
+    
+    if (!timeValues[period]) {
+      timeValues[period] = 0;
+    }
+    
+    timeValues[period] += value;
+  });
+  
+  if (timePeriods.size < 2) {
+    return `I couldn't find enough time periods to make a comparison. Only found: ${Array.from(timePeriods).join(', ')}.`;
+  }
+  
+  // Sort periods for better presentation
+  const sortedPeriods = Array.from(timePeriods).sort();
+  
+  // Construct response
+  let response = `Here's a comparison of ${useAmount ? 'sales amount' : 'quantity'} across different time periods:\n`;
+  
+  sortedPeriods.forEach(period => {
+    response += `${period}: ${useAmount ? '₹' : ''}${(timeValues[period] || 0).toFixed(useAmount ? 2 : 0)}\n`;
+  });
+  
+  // Add insights - compare adjacent periods
+  if (sortedPeriods.length >= 2) {
+    const firstPeriod = sortedPeriods[0];
+    const lastPeriod = sortedPeriods[sortedPeriods.length - 1];
+    
+    const firstValue = timeValues[firstPeriod] || 0;
+    const lastValue = timeValues[lastPeriod] || 0;
+    
+    const percentChange = ((lastValue - firstValue) / firstValue) * 100;
+    
+    response += `\nFrom ${firstPeriod} to ${lastPeriod}, there was a ${Math.abs(percentChange).toFixed(2)}% ${percentChange >= 0 ? 'increase' : 'decrease'} in ${useAmount ? 'sales' : 'quantity'}.`;
+  }
+  
+  return response;
+}
+
+// Handle trend analysis query
+function handleTrendAnalysisQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // This is similar to time comparison but focuses on trends
+  // Find date column
+  const dateColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.DATE
+  );
+  
+  if (dateColumns.length === 0) {
+    return `I couldn't find date columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which column contains date information?`;
+  }
+  
+  const dateColumn = dateColumns[0];
+  
+  // Find amount and quantity columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  // If no amount or quantity columns found
+  if (amountColumns.length === 0 && quantityColumns.length === 0) {
+    return `I couldn't find sales amount or quantity columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain sales information?`;
+  }
+  
+  // Determine if we should use amount or quantity based on prompt
+  const useAmount = !prompt.toLowerCase().includes('quantity');
+  const relevantColumns = useAmount ? amountColumns : quantityColumns;
+  
+  if (relevantColumns.length === 0) {
+    return `I couldn't find ${useAmount ? 'amount' : 'quantity'} columns in your data. Available columns are: ${headers.join(', ')}.`;
+  }
+  
+  const valueColumn = relevantColumns[0];
+  
+  // Extract months or time periods from data
+  const timeData: Record<string, number> = {};
+  
+  data.forEach(row => {
+    const dateStr = row[dateColumn];
+    if (!dateStr) return;
+    
+    // Try to extract month/year or period
+    let period = '';
+    
+    // Try different date formats
+    try {
+      const dateParts = dateStr.split(/[-/]/);
+      if (dateParts.length >= 3) {
+        // Assume it's DD/MM/YYYY format (common in India)
+        const month = parseInt(dateParts[1]);
+        const year = parseInt(dateParts[2]);
+        if (!isNaN(month) && !isNaN(year)) {
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                             'July', 'August', 'September', 'October', 'November', 'December'];
+          period = `${monthNames[month - 1]} ${year}`;
+        }
+      }
+    } catch (e) {
+      // Try another approach - extract just the month name if present
+      const monthMatch = dateStr.match(/(January|February|March|April|May|June|July|August|September|October|November|December)/i);
+      if (monthMatch) {
+        period = monthMatch[0];
+      }
+    }
+    
+    // If we couldn't extract a period, skip this row
+    if (!period) return;
+    
+    const value = parseFloat(row[valueColumn].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim());
+    if (isNaN(value)) return;
+    
+    if (!timeData[period]) {
+      timeData[period] = 0;
+    }
+    
+    timeData[period] += value;
+  });
+  
+  if (Object.keys(timeData).length < 3) {
+    return `I couldn't find enough time periods to analyze the trend. Found only: ${Object.keys(timeData).join(', ')}.`;
+  }
+  
+  // Sort periods for trend analysis
+  const sortedPeriods = Object.keys(timeData).sort();
+  const sortedValues = sortedPeriods.map(period => timeData[period]);
+  
+  // Calculate trend
+  let trend = '';
+  
+  // Determine if trend is increasing, decreasing, or fluctuating
+  let increasing = true;
+  let decreasing = true;
+  
+  for (let i = 1; i < sortedValues.length; i++) {
+    if (sortedValues[i] < sortedValues[i - 1]) {
+      increasing = false;
+    }
+    if (sortedValues[i] > sortedValues[i - 1]) {
+      decreasing = false;
+    }
+  }
+  
+  if (increasing) {
+    trend = 'consistently increasing';
+  } else if (decreasing) {
+    trend = 'consistently decreasing';
+  } else {
+    // Check if overall trend is up or down
+    const firstValue = sortedValues[0];
+    const lastValue = sortedValues[sortedValues.length - 1];
+    
+    if (lastValue > firstValue) {
+      trend = 'fluctuating but generally increasing';
+    } else if (lastValue < firstValue) {
+      trend = 'fluctuating but generally decreasing';
+    } else {
+      trend = 'fluctuating with no clear direction';
+    }
+  }
+  
+  // Calculate growth rate
+  const firstValue = sortedValues[0];
+  const lastValue = sortedValues[sortedValues.length - 1];
+  const totalGrowthRate = ((lastValue - firstValue) / firstValue) * 100;
+  
+  // Construct response
+  let response = `Trend Analysis for ${useAmount ? 'Sales Amount' : 'Quantity'} over ${sortedPeriods.length} time periods:\n\n`;
+  
+  sortedPeriods.forEach((period, index) => {
+    response += `${period}: ${useAmount ? '₹' : ''}${timeData[period].toFixed(useAmount ? 2 : 0)}`;
+    
+    // Add period-over-period growth rate
+    if (index > 0) {
+      const previousValue = timeData[sortedPeriods[index - 1]];
+      const currentValue = timeData[period];
+      const growthRate = ((currentValue - previousValue) / previousValue) * 100;
+      
+      response += ` (${growthRate >= 0 ? '+' : ''}${growthRate.toFixed(2)}%)`;
+    }
+    
+    response += '\n';
+  });
+  
+  response += `\nOverall trend: ${trend}`;
+  response += `\nTotal growth from ${sortedPeriods[0]} to ${sortedPeriods[sortedPeriods.length - 1]}: ${totalGrowthRate >= 0 ? '+' : ''}${totalGrowthRate.toFixed(2)}%`;
+  
+  // Add seasonality insights if applicable
+  if (sortedPeriods.length >= 6) {
+    response += '\n\nPossible seasonal patterns:';
+    
+    // Find peaks (highest values)
+    const indexedValues = sortedValues.map((value, index) => ({ value, index }));
+    const peakPeriods = indexedValues
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 3)
+      .map(item => sortedPeriods[item.index]);
+    
+    if (peakPeriods.length > 0) {
+      response += `\nPeak periods: ${peakPeriods.join(', ')}`;
+    }
+  }
+  
+  return response;
+}
+
+// Handle product insights query
+function handleProductInsightsQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find product column
+  const productColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.PRODUCT
+  );
+  
+  if (productColumns.length === 0) {
+    return `I couldn't find product columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which column contains product information?`;
+  }
+  
+  const productColumn = productColumns[0];
+  
+  // Find amount and quantity columns
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  // If no amount or quantity columns found
+  if (amountColumns.length === 0 && quantityColumns.length === 0) {
+    return `I couldn't find sales amount or quantity columns in your data. The available columns are: ${headers.join(', ')}. Could you clarify which columns contain sales information?`;
+  }
+  
+  // Determine if we should use amount or quantity based on prompt
+  const useAmount = !prompt.toLowerCase().includes('quantity');
+  const relevantColumns = useAmount ? amountColumns : quantityColumns;
+  
+  if (relevantColumns.length === 0) {
+    return `I couldn't find ${useAmount ? 'amount' : 'quantity'} columns in your data. Available columns are: ${headers.join(', ')}.`;
+  }
+  
+  const valueColumn = relevantColumns[0];
+  
+  // Find date column if it exists
+  const dateColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.DATE
+  );
+  
+  const dateColumn = dateColumns.length > 0 ? dateColumns[0] : null;
+  
+  // Aggregate data by product
+  const productTotals: Record<string, number> = {};
+  const products = new Set<string>();
+  
+  // For trend analysis if date column exists
+  const productTimeData: Record<string, Record<string, number>> = {};
+  
+  data.forEach(row => {
+    const product = row[productColumn];
+    if (!product) return;
+    
+    products.add(product);
+    
+    const value = parseFloat(row[valueColumn].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim());
+    if (isNaN(value)) return;
+    
+    if (!productTotals[product]) {
+      productTotals[product] = 0;
+    }
+    
+    productTotals[product] += value;
+    
+    // If date column exists, track product performance over time
+    if (dateColumn) {
+      const dateStr = row[dateColumn];
+      if (!dateStr) return;
+      
+      // Extract period (month/year)
+      let period = '';
+      try {
+        const dateParts = dateStr.split(/[-/]/);
+        if (dateParts.length >= 3) {
+          // Assume it's DD/MM/YYYY format (common in India)
+          const month = parseInt(dateParts[1]);
+          const year = parseInt(dateParts[2]);
+          if (!isNaN(month) && !isNaN(year)) {
+            period = `${month}/${year}`;
+          }
+        }
+      } catch (e) {
+        // Skip this row if period can't be determined
+        return;
+      }
+      
+      if (!period) return;
+      
+      if (!productTimeData[product]) {
+        productTimeData[product] = {};
+      }
+      
+      if (!productTimeData[product][period]) {
+        productTimeData[product][period] = 0;
+      }
+      
+      productTimeData[product][period] += value;
+    }
+  });
+  
+  // Sort products by total value
+  const sortedProducts = Object.entries(productTotals)
+    .sort((a, b) => b[1] - a[1]);
+  
+  if (sortedProducts.length === 0) {
+    return `I couldn't find any valid product sales data.`;
+  }
+  
+  // Identify declining products if date info is available
+  const decliningProducts: string[] = [];
+  
+  if (dateColumn && Object.keys(productTimeData).length > 0) {
+    // For each product, check if sales are declining
+    Object.entries(productTimeData).forEach(([product, timeSeries]) => {
+      const periods = Object.keys(timeSeries).sort();
+      
+      if (periods.length >= 3) {
+        // Check the last 3 periods
+        const last3Periods = periods.slice(-3);
+        const values = last3Periods.map(p => timeSeries[p]);
+        
+        // If values are consistently decreasing
+        if (values[0] > values[1] && values[1] > values[2]) {
+          decliningProducts.push(product);
+        }
+      }
+    });
+  }
+  
+  // Construct response
+  let response = `Product Insights Analysis:\n\n`;
+  
+  // Top performing products
+  const topProducts = sortedProducts.slice(0, 5);
+  response += `Top 5 Performing Products:\n`;
+  topProducts.forEach((product, index) => {
+    response += `${index + 1}. ${product[0]}: ${useAmount ? '₹' : ''}${product[1].toFixed(useAmount ? 2 : 0)}\n`;
+  });
+  
+  // Bottom performing products
+  const bottomProducts = sortedProducts.slice(-5).reverse();
+  response += `\nBottom 5 Performing Products:\n`;
+  bottomProducts.forEach((product, index) => {
+    response += `${index + 1}. ${product[0]}: ${useAmount ? '₹' : ''}${product[1].toFixed(useAmount ? 2 : 0)}\n`;
+  });
+  
+  // Declining products
+  if (decliningProducts.length > 0) {
+    response += `\nProducts with Declining Sales Trend:\n`;
+    decliningProducts.slice(0, 5).forEach((product, index) => {
+      response += `${index + 1}. ${product}\n`;
+    });
+  }
+  
+  // Overall statistics
+  const totalProducts = products.size;
+  const totalValue = Object.values(productTotals).reduce((sum, value) => sum + value, 0);
+  const avgValue = totalValue / totalProducts;
+  
+  response += `\nSummary Statistics:\n`;
+  response += `- Total Products: ${totalProducts}\n`;
+  response += `- Total ${useAmount ? 'Sales' : 'Quantity'}: ${useAmount ? '₹' : ''}${totalValue.toFixed(useAmount ? 2 : 0)}\n`;
+  response += `- Average ${useAmount ? 'Sales' : 'Quantity'} per Product: ${useAmount ? '₹' : ''}${avgValue.toFixed(useAmount ? 2 : 0)}\n`;
+  
+  return response;
+}
+
+// Handle summary statistics query
+function handleSummaryStatisticsQuery(
+  prompt: string, 
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>,
+  entityReferences: any
+): string {
+  // Find numeric columns
+  const numericColumns = headers.filter(header => 
+    columnTypes[header] === 'numeric'
+  );
+  
+  if (numericColumns.length === 0) {
+    return `I couldn't find numeric columns in your data for statistical analysis. The available columns are: ${headers.join(', ')}.`;
+  }
+  
+  // Calculate statistics for each numeric column
+  const statistics: Record<string, any> = {};
+  
+  numericColumns.forEach(column => {
+    // Extract valid numeric values
+    const values = data
+      .map(row => {
+        const value = row[column].replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim();
+        return parseFloat(value);
+      })
+      .filter(value => !isNaN(value));
+    
+    if (values.length === 0) return;
+    
+    // Sort values for percentile calculations
+    const sortedValues = [...values].sort((a, b) => a - b);
+    
+    // Calculate basic statistics
+    const sum = values.reduce((total, val) => total + val, 0);
+    const mean = sum / values.length;
+    
+    // Calculate median
+    let median;
+    const mid = Math.floor(sortedValues.length / 2);
+    if (sortedValues.length % 2 === 0) {
+      median = (sortedValues[mid - 1] + sortedValues[mid]) / 2;
+    } else {
+      median = sortedValues[mid];
+    }
+    
+    // Calculate standard deviation
+    const variance = values.reduce((total, val) => total + Math.pow(val - mean, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    
+    // Calculate quartiles
+    const q1Index = Math.floor(sortedValues.length * 0.25);
+    const q3Index = Math.floor(sortedValues.length * 0.75);
+    const q1 = sortedValues[q1Index];
+    const q3 = sortedValues[q3Index];
+    
+    statistics[column] = {
+      count: values.length,
+      min: sortedValues[0],
+      max: sortedValues[sortedValues.length - 1],
+      sum,
+      mean,
+      median,
+      stdDev,
+      q1,
+      q3
+    };
+  });
+  
+  // If there are no valid statistics
+  if (Object.keys(statistics).length === 0) {
+    return `I couldn't calculate statistics from your data. Please check if your numeric columns contain valid numbers.`;
+  }
+  
+  // Determine column semantics for better reporting
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const quantityColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.QUANTITY
+  );
+  
+  const taxColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.TAX ||
+    columnSemanticTypes[header] === ColumnSemanticType.TAX_RATE
+  );
+  
+  // Construct response
+  let response = `Summary Statistics:\n\n`;
+  
+  // Basic dataset information
+  response += `Dataset Information:\n`;
+  response += `- Total Records: ${data.length}\n`;
+  response += `- Total Columns: ${headers.length}\n`;
+  response += `- Numeric Columns: ${numericColumns.length}\n\n`;
+  
+  // Focus on key columns first
+  const priorityColumns = [...amountColumns, ...quantityColumns, ...taxColumns];
+  const remainingColumns = numericColumns.filter(col => !priorityColumns.includes(col));
+  const columnsToProcess = [...priorityColumns, ...remainingColumns];
+  
+  // Report detailed statistics for each column
+  columnsToProcess.forEach(column => {
+    if (!statistics[column]) return;
+    
+    const stats = statistics[column];
+    const isCurrency = columnSemanticTypes[column] === ColumnSemanticType.AMOUNT || 
+                      columnSemanticTypes[column] === ColumnSemanticType.TAX;
+    
+    response += `${column} Statistics:\n`;
+    response += `- Count: ${stats.count}\n`;
+    response += `- Minimum: ${isCurrency ? '₹' : ''}${stats.min.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- Maximum: ${isCurrency ? '₹' : ''}${stats.max.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- Sum: ${isCurrency ? '₹' : ''}${stats.sum.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- Mean (Average): ${isCurrency ? '₹' : ''}${stats.mean.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- Median: ${isCurrency ? '₹' : ''}${stats.median.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- Standard Deviation: ${isCurrency ? '₹' : ''}${stats.stdDev.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- 1st Quartile (25%): ${isCurrency ? '₹' : ''}${stats.q1.toFixed(isCurrency ? 2 : 2)}\n`;
+    response += `- 3rd Quartile (75%): ${isCurrency ? '₹' : ''}${stats.q3.toFixed(isCurrency ? 2 : 2)}\n\n`;
+  });
+  
+  return response;
+}
+
+// Default response when no specific query type is identified
+function generateDefaultResponse(
+  data: Record<string, string>[], 
+  headers: string[], 
+  columnTypes: Record<string, string>,
+  columnSemanticTypes: Record<string, ColumnSemanticType>
+): string {
+  const rowCount = data.length;
+  
+  // Identify key column types
+  const amountColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+  );
+  
+  const taxColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.TAX ||
+    columnSemanticTypes[header] === ColumnSemanticType.TAX_RATE
+  );
+  
+  const dateColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.DATE
+  );
+  
+  const productColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.PRODUCT
+  );
+  
+  const invoiceColumns = headers.filter(header => 
+    columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER
+  );
+  
+  // Generate enhanced default response
+  let response = `I've analyzed your CSV data with ${rowCount} rows and ${headers.length} columns.\n\n`;
+  
+  // Add information about key column types
+  response += 'I identified the following column types:\n';
+  
+  if (amountColumns.length > 0) {
+    response += `- Amount/Value columns: ${amountColumns.join(', ')}\n`;
+  }
+  
+  if (taxColumns.length > 0) {
+    response += `- Tax-related columns: ${taxColumns.join(', ')}\n`;
+  }
+  
+  if (dateColumns.length > 0) {
+    response += `- Date columns: ${dateColumns.join(', ')}\n`;
+  }
+  
+  if (productColumns.length > 0) {
+    response += `- Product columns: ${productColumns.join(', ')}\n`;
+  }
+  
+  if (invoiceColumns.length > 0) {
+    response += `- Invoice/Bill Number columns: ${invoiceColumns.join(', ')}\n`;
+  }
+  
+  // Add suggestion for queries
+  response += `\nYou can ask me specific questions about this data, such as:\n`;
+  response += `- "How many invoices are there?"\n`;
+  response += `- "Calculate total tax amount"\n`;
+  response += `- "What are the top selling products?"\n`;
+  response += `- "Show monthly sales trend"\n`;
+  response += `- "Analyze sales by city"\n`;
+  response += `- "Find products with declining sales"\n`;
+  response += `- "Compare sales between months"\n`;
+  response += `- "Give me a summary of tax data"\n`;
+  
+  return response;
 }
