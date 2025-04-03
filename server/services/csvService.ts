@@ -215,6 +215,17 @@ async function enhancedCSVProcessing(
           
           // Handle invoice query without specific date filtering
           if (isInvoiceQuery(prompt)) {
+            // Special case for "Vou No." or "Voucher No." columns - explicitly count them as invoices
+            const invoiceColumns = headers.filter(header => 
+              columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER || 
+              header.toLowerCase().includes('vou no') || 
+              header.toLowerCase().includes('voucher')
+            );
+            
+            if (invoiceColumns.length > 0) {
+              return `I found ${rowCount} invoices in your CSV file, using the "${invoiceColumns[0]}" column as the invoice identifier.`;
+            }
+            
             return `I found ${rowCount} records in your CSV file. Each row likely represents a separate invoice or transaction.`;
           }
           
@@ -356,7 +367,9 @@ function inferSemanticType(header: string, sampleValues: string[]): ColumnSemant
   // Invoice number detection
   if (headerLower.includes('invoice') || headerLower.includes('bill') || 
       headerLower.includes('receipt') || headerLower === 'no.' || 
-      headerLower === 'no' || headerLower.includes('number')) {
+      headerLower === 'no' || headerLower.includes('number') ||
+      headerLower.includes('vou no') || headerLower.includes('voucher no') || 
+      headerLower === 'vou' || headerLower.includes('transaction id')) {
     return ColumnSemanticType.INVOICE_NUMBER;
   }
   
@@ -599,14 +612,14 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
   }
   
   // Boost confidence for tax-related queries with Indian context
-  if (bestType === QueryType.TAX_CALCULATION && 
+  if (bestType === "tax_calculation" && 
       /gst|cgst|sgst|igst|tax|vat|gstin/i.test(promptLower)) {
     highestScore += 1;
   }
   
   // Boost confidence for count/amount queries
   if (/how many|count|total number|calculate total/i.test(promptLower)) {
-    if (bestType === QueryType.HIGHEST_SALES || bestType === QueryType.TOP_PRODUCTS) {
+    if (bestType === "highest_sales" || bestType === "top_products") {
       highestScore += 1;
     }
   }
@@ -755,8 +768,8 @@ function isCountQuery(prompt: string): boolean {
 // Check if a query is related to invoices
 function isInvoiceQuery(prompt: string): boolean {
   const invoicePatterns = [
-    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, 
-    /record/i, /entry/i, /transaction/i
+    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, /vou/i,
+    /record/i, /entry/i, /transaction/i, /vou no/i, /voucher no/i
   ];
   
   return invoicePatterns.some(pattern => pattern.test(prompt));
