@@ -1482,8 +1482,18 @@ function handleTimeComparisonQuery(
           headerLower.includes('invoice date') ||
           headerLower.includes('bill date')) {
         dateColumn = header;
+        console.log(`Found date column: ${header}`);
         break;
       }
+    }
+    
+    // Debug: Print a sample of date values from the CSV
+    if (dateColumn && data.length > 0) {
+      console.log(`Searching for dates matching month=${targetMonth}, year=${targetYear}`);
+      console.log(`Sample date values from CSV (first 5 rows):`);
+      data.slice(0, 5).forEach((row, idx) => {
+        console.log(`Row ${idx+1}: '${row[dateColumn]}' (${typeof row[dateColumn]})`);
+      });
     }
     
     // Find voucher number column
@@ -1517,6 +1527,9 @@ function handleTimeComparisonQuery(
         if (dateColumn && row[dateColumn]) {
           const dateValue = row[dateColumn];
           
+          // Debug the date value
+          // console.log(`Checking date value: ${dateValue}`);
+          
           // Try different date formats (with special handling for Indian DD/MM/YYYY format)
           if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
             // Assume DD/MM/YYYY (common in India)
@@ -1524,7 +1537,11 @@ function handleTimeComparisonQuery(
             const month = parseInt(parts[1]);
             const year = parseInt(parts[2]);
             
+            // Debug parsed parts
+            console.log(`Date format DD/MM/YYYY detected: Parts=${parts.join(',')} → month=${month}, year=${year}`);
+            
             if (month === targetMonth && year === targetYear) {
+              console.log(`MATCH FOUND: ${dateValue} matches target month=${targetMonth}, year=${targetYear}`);
               isMatch = true;
             }
           } 
@@ -1534,7 +1551,11 @@ function handleTimeComparisonQuery(
             const month = parseInt(parts[0]);
             const year = parseInt(parts[2]);
             
+            // Debug parsed parts
+            console.log(`Date format MM/DD/YYYY detected: Parts=${parts.join(',')} → month=${month}, year=${year}`);
+            
             if (month === targetMonth && year === targetYear) {
+              console.log(`MATCH FOUND: ${dateValue} matches target month=${targetMonth}, year=${targetYear}`);
               isMatch = true;
             }
           }
@@ -1544,14 +1565,41 @@ function handleTimeComparisonQuery(
             const year = parseInt(parts[0]);
             const month = parseInt(parts[1]);
             
+            // Debug parsed parts
+            console.log(`Date format YYYY-MM-DD detected: Parts=${parts.join(',')} → month=${month}, year=${year}`);
+            
             if (month === targetMonth && year === targetYear) {
+              console.log(`MATCH FOUND: ${dateValue} matches target month=${targetMonth}, year=${targetYear}`);
               isMatch = true;
             }
           }
+          // Try to parse as a Date object
+          else {
+            try {
+              const date = new Date(dateValue);
+              if (!isNaN(date.getTime())) {
+                const month = date.getMonth() + 1; // JS months are 0-indexed
+                const year = date.getFullYear();
+                
+                console.log(`Date object parsed: ${dateValue} → month=${month}, year=${year}`);
+                
+                if (month === targetMonth && year === targetYear) {
+                  console.log(`MATCH FOUND: ${dateValue} matches target month=${targetMonth}, year=${targetYear}`);
+                  isMatch = true;
+                }
+              }
+            } catch (e) {
+              console.log(`Failed to parse as Date object: ${dateValue}`);
+            }
+          }
+          
           // Also check for text date format like "Feb 2023"
-          else if (dateValue.toLowerCase().includes(['january', 'february', 'march', 'april', 'may', 'june', 
-                      'july', 'august', 'september', 'october', 'november', 'december'][targetMonth-1]) && 
-                   dateValue.includes(targetYear.toString())) {
+          const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                             'july', 'august', 'september', 'october', 'november', 'december'];
+          if (!isMatch && 
+              dateValue.toLowerCase().includes(monthNames[targetMonth-1]) && 
+              dateValue.includes(targetYear.toString())) {
+            console.log(`Text date match found: ${dateValue} contains "${monthNames[targetMonth-1]}" and "${targetYear}"`);
             isMatch = true;
           }
         }
