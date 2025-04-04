@@ -483,8 +483,9 @@ function parseCSV(csvData: Buffer, fileType?: string) {
   // Regular CSV processing for non-Excel files
   const csvContent = csvData.toString('utf-8');
 
-  // Try to detect the delimiter
-  const firstLine = csvContent.split('\n')[0];
+  // Try to detect the delimiter and line ending
+  const firstFewLines = csvContent.split(/\r?\n/).slice(0, 5);
+  const firstLine = firstFewLines[0];
   let delimiter = ',';
 
   // Count occurrences of potential delimiters
@@ -497,13 +498,17 @@ function parseCSV(csvData: Buffer, fileType?: string) {
     delimiter = delimiters[maxIndex];
   }
 
-  // Split lines and filter out empty ones
-  const lines = csvContent.split('\n').filter(line => line.trim());
+  // Split lines and filter out empty ones - handle both Unix and Windows line endings
+  const lines = csvContent.split(/\r?\n/).filter(line => line.trim());
 
   // Handle header line with potential quoting and proper separation
   let headers: string[] = [];
   const headerLine = lines[0];
 
+  // Log the raw header line for debugging
+  console.log("RAW HEADER LINE:", headerLine);
+
+  // Better handling for quoted header values
   if (headerLine.includes('"')) {
     // Parse headers respecting quotes
     let inQuotes = false;
@@ -512,9 +517,13 @@ function parseCSV(csvData: Buffer, fileType?: string) {
     for (let i = 0; i < headerLine.length; i++) {
       const char = headerLine[i];
 
-      if (char === '"' && (i === 0 || headerLine[i-1] !== '\\')) {
-        // Toggle quote state
-        inQuotes = !inQuotes;
+      if (char === '"') {
+        // Toggle quote state (unless it's an escaped quote)
+        if (i === 0 || headerLine[i-1] !== '\\') {
+          inQuotes = !inQuotes;
+        } else {
+          currentHeader += char; // Add escaped quote
+        }
       } else if (char === delimiter && !inQuotes) {
         // End of a header
         headers.push(currentHeader.trim().replace(/^["']|["']$/g, ''));
@@ -561,37 +570,78 @@ function parseCSV(csvData: Buffer, fileType?: string) {
     console.log(`Line ${i}: ${lines[i].substring(0, 100)}${lines[i].length > 100 ? '...' : ''}`);
   }
   
+  // Parse CSV using a more robust approach
   for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
+    const line = lines[i];
+    if (!line.trim()) continue;
 
     // Handle quoted values properly
     const values: string[] = [];
     let currentValue = '';
     let inQuotes = false;
+    
+    // Debug the line parsing for the first few lines
+    if (i <= 3) {
+      console.log(`Parsing CSV line ${i}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`);
+    }
 
-    for (let j = 0; j < lines[i].length; j++) {
-      const char = lines[i][j];
+    for (let j = 0; j < line.length; j++) {
+      const char = line[j];
+      const nextChar = j < line.length - 1 ? line[j + 1] : '';
 
-      if (char === '"' && (j === 0 || lines[i][j-1] !== '\\')) {
-        inQuotes = !inQuotes;
+      if (char === '"') {
+        // Handle quotes - toggle quote state if not escaped
+        if (inQuotes && nextChar === '"') {
+          // Handle escaped quote within quoted string (double quotes)
+          currentValue += '"';
+          j++; // Skip the next quote
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
       } else if (char === delimiter && !inQuotes) {
-        values.push(currentValue.trim().replace(/^["']|["']$/g, ''));
+        // End of a field - only if not inside quotes
+        values.push(currentValue);
         currentValue = '';
       } else {
+        // Regular character - add to current value
         currentValue += char;
       }
     }
 
     // Add the last value
-    values.push(currentValue.trim().replace(/^["']|["']$/g, ''));
+    values.push(currentValue);
 
-    // Create row object
+    // Create row object with proper trimming and cleaning
     const row: Record<string, string> = {};
     headers.forEach((header, index) => {
-      row[header] = index < values.length ? values[index] : '';
+      if (index < values.length) {
+        // Clean up the value - remove wrapping quotes and trim
+        let value = values[index];
+        // Remove wrapping quotes if present
+        if (value.startsWith('"') && value.endsWith('"')) {
+          value = value.substring(1, value.length - 1);
+        }
+        row[header] = value.trim();
+      } else {
+        row[header] = ''; // Empty for missing values
+      }
     });
 
+    // Debug log for first few rows to check if parsing is correct
+    if (i <= 3) {
+      console.log(`Parsed row ${i}:`, JSON.stringify(row));
+    }
+
     data.push(row);
+  }
+  
+  // Log debug info for the first row to check column data
+  if (data.length > 0) {
+    console.log("FULL ROW DEBUG - First row values for all columns:");
+    headers.forEach(header => {
+      console.log(`Column '${header}': '${data[0][header]}'`);
+    });
   }
 
   // Detect column types
@@ -1113,7 +1163,7 @@ function extractEntityReferences(
             });
             
             // Look for exact or partial matches
-            for (const voucher of vouchers) {
+            Array.from(vouchers).forEach(voucher => {
               // Check if the number from the prompt is contained in the voucher
               // or if the voucher contains the number
               if (voucher.includes(searchNumber) || searchNumber.includes(voucher)) {
@@ -1121,7 +1171,7 @@ function extractEntityReferences(
                 result.specificEntities.push(voucher);
                 result.filters[col] = voucher; // Add as a filter for this column
               }
-            }
+            });
           }
           
           // If we found any matches, break out of the pattern loop
