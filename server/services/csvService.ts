@@ -166,28 +166,52 @@ async function enhancedCSVProcessing(
                                   promptLower.includes('voucher');
             
             // Find voucher number column if it's a voucher query
-            let voucherColumn = '';
+            let voucherColumns: string[] = [];
             if (isVoucherQuery) {
+              // First, look for exact "Vou No." column which is commonly used in Indian accounting
+              let exactMatch = '';
               for (const header of headers) {
                 const headerLower = header.toLowerCase();
+                // Check for exact matches first
                 if (
-                  headerLower.includes('vou no') || 
-                  headerLower.includes('voucher') ||
-                  headerLower === 'vou no.' ||
+                  headerLower === 'vou no.' || 
+                  headerLower === 'vou no' ||
                   headerLower === 'voucher no.' ||
-                  headerLower === 'vou. no.' ||
-                  headerLower === 'vou.no.' ||
-                  headerLower === 'vch no' ||
-                  headerLower === 'vch no.' ||
-                  headerLower === 'v.no' ||
-                  headerLower === 'v no' ||
-                  columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER
+                  headerLower === 'voucher no'
                 ) {
-                  voucherColumn = header;
+                  exactMatch = header;
                   break;
                 }
               }
+              
+              // If we found an exact match, use it
+              if (exactMatch) {
+                voucherColumns = [exactMatch];
+              } else {
+                // Otherwise collect all possible voucher columns
+                for (const header of headers) {
+                  const headerLower = header.toLowerCase();
+                  if (
+                    headerLower.includes('vou no') || 
+                    headerLower.includes('voucher') ||
+                    headerLower === 'vou no.' ||
+                    headerLower === 'voucher no.' ||
+                    headerLower === 'vou. no.' ||
+                    headerLower === 'vou.no.' ||
+                    headerLower === 'vch no' ||
+                    headerLower === 'vch no.' ||
+                    headerLower === 'v.no' ||
+                    headerLower === 'v no' ||
+                    columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER
+                  ) {
+                    voucherColumns.push(header);
+                  }
+                }
+              }
             }
+            
+            // Select the first voucher column if any were found
+            const voucherColumn = voucherColumns.length > 0 ? voucherColumns[0] : '';
             
             if (dateColumn || voucherColumn) {
               let count = 0;
@@ -325,7 +349,7 @@ function parseCSV(csvData: Buffer) {
   
   // Count occurrences of potential delimiters
   const delimiters = [',', ';', '\t', '|'];
-  const counts = delimiters.map(d => (firstLine.match(new RegExp(d, 'g')) || []).length);
+  const counts = delimiters.map(d => (firstLine.match(new RegExp(`(?<!\\")${d}(?!\\")`, 'g')) || []).length);
   
   // Use the delimiter with the highest count
   const maxIndex = counts.indexOf(Math.max(...counts));
@@ -336,8 +360,47 @@ function parseCSV(csvData: Buffer) {
   // Split lines and filter out empty ones
   const lines = csvContent.split('\n').filter(line => line.trim());
   
-  // Extract headers and clean them
-  const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+  // Handle header line with potential quoting and proper separation
+  let headers: string[] = [];
+  const headerLine = lines[0];
+  
+  if (headerLine.includes('"')) {
+    // Parse headers respecting quotes
+    let inQuotes = false;
+    let currentHeader = '';
+    
+    for (let i = 0; i < headerLine.length; i++) {
+      const char = headerLine[i];
+      
+      if (char === '"' && (i === 0 || headerLine[i-1] !== '\\')) {
+        // Toggle quote state
+        inQuotes = !inQuotes;
+      } else if (char === delimiter && !inQuotes) {
+        // End of a header
+        headers.push(currentHeader.trim().replace(/^["']|["']$/g, ''));
+        currentHeader = '';
+      } else {
+        // Regular character
+        currentHeader += char;
+      }
+    }
+    
+    // Add the last header
+    if (currentHeader.trim()) {
+      headers.push(currentHeader.trim().replace(/^["']|["']$/g, ''));
+    }
+  } else {
+    // Simple split for unquoted headers
+    headers = headerLine.split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+  }
+  
+  // Check for potential composite header (a common error in CSV files)
+  if (headers.length === 1 && headers[0].includes(',')) {
+    // This looks like a complex header containing commas
+    // Split it properly and handle each column separately
+    headers = headers[0].split(',').map(h => h.trim());
+    console.log("Detected composite header, split into:", headers);
+  }
   
   // Convert CSV rows to objects for easier analysis
   const data: Record<string, string>[] = [];
