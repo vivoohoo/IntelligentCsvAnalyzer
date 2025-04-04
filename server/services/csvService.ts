@@ -364,7 +364,11 @@ function parseCSV(csvData: Buffer, fileType?: string) {
       const worksheet = workbook.Sheets[firstSheetName];
       
       // Convert to JSON with headers
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+        header: 1,
+        raw: false, // Don't use raw values for dates
+        dateNF: 'yyyy-mm-dd' // Format dates
+      });
       
       // Extract headers (first row)
       if (jsonData.length === 0) {
@@ -373,13 +377,80 @@ function parseCSV(csvData: Buffer, fileType?: string) {
       
       const headers = jsonData[0] as string[];
       
+      // Normalize header names - common issue with Excel files
+      const normalizedHeaders = headers.map(header => {
+        if (typeof header === 'string') {
+          const cleanHeader = header.trim();
+          
+          // Special handling for Indian voucher number formats
+          // These are commonly labeled as "Vou No." or variations in Indian accounting
+          if (cleanHeader.match(/^vou\.?\s*no\.?$/i) || 
+              cleanHeader.match(/^voucher\.?\s*no\.?$/i) ||
+              cleanHeader.match(/^v\.?\s*no\.?$/i) ||
+              cleanHeader.match(/^vchr?\.?\s*no\.?$/i)) {
+            console.log(`Standardizing voucher column header: "${cleanHeader}" -> "Vou No."`);
+            return "Vou No.";
+          }
+          
+          return cleanHeader;
+        }
+        return String(header);
+      });
+      
+      // Debug - print all headers
+      console.log("Excel headers:", normalizedHeaders);
+      
       // Convert the rest of the data
       const data = jsonData.slice(1).map(row => {
         const obj: Record<string, string> = {};
         (row as any[]).forEach((cell, index) => {
-          if (index < headers.length) {
-            // Convert all values to strings
-            obj[headers[index]] = cell !== undefined ? String(cell) : '';
+          if (index < normalizedHeaders.length) {
+            const header = normalizedHeaders[index];
+            
+            // Special handling for different column types
+            const headerLower = header.toLowerCase();
+            
+            // Handle Excel dates (commonly stored as serial numbers)
+            if (headerLower.includes('date') || 
+                headerLower === 'vou date' || 
+                headerLower === 'voudate' || 
+                headerLower === 'vou. date' ||
+                headerLower === 'date') {
+              
+              // Excel stores dates as serial numbers (e.g., 45723)
+              if (typeof cell === 'number' && cell > 1000) { // Likely a date serial number
+                try {
+                  // Try to convert Excel serial date to JS date
+                  const date = XLSX.SSF.parse_date_code(cell);
+                  obj[header] = `${date.y}-${String(date.m).padStart(2, '0')}-${String(date.d).padStart(2, '0')}`;
+                  console.log(`Converted Excel date serial ${cell} to ${obj[header]}`);
+                } catch (error) {
+                  console.error(`Failed to convert Excel date: ${cell}`, error);
+                  obj[header] = cell !== undefined ? String(cell) : '';
+                }
+              }
+              // Check if it's a date object
+              else if (cell instanceof Date) {
+                obj[header] = cell.toISOString().split('T')[0];
+                console.log(`Converted Excel date object to ${obj[header]}`);
+              }
+              // Regular string handling
+              else {
+                obj[header] = cell !== undefined ? String(cell) : '';
+              }
+            }
+            // Handle voucher numbers - ensure they're strings
+            else if (headerLower.includes('vou no') || 
+                     headerLower === 'vou no.' || 
+                     headerLower === 'voucher no' ||
+                     headerLower === 'voucher no.') {
+              obj[header] = cell !== undefined ? String(cell).trim() : '';
+              console.log(`Processed voucher number: ${obj[header]}`);
+            }
+            // Standard handling for other cell types
+            else {
+              obj[header] = cell !== undefined ? String(cell) : '';
+            }
           }
         });
         return obj;
@@ -984,7 +1055,7 @@ function extractEntityReferences(
     data.forEach(row => {
       textColumns.forEach(col => {
         const value = row[col];
-        if (value && value.length > 3) { 
+        if (value && value.length > 2) { // Reduced minimum length to catch short voucher numbers 
           uniqueValues.add(value);
         }
       });
@@ -996,6 +1067,68 @@ function extractEntityReferences(
         result.specificEntities.push(value);
       }
     });
+    
+    // Special handling for voucher numbers - they often don't appear exactly in the prompt
+    // Look for voucher/invoice columns specifically
+    const voucherColumns = headers.filter(header => {
+      const headerLower = header.toLowerCase();
+      return headerLower.includes('vou no') || 
+             headerLower === 'vou no.' || 
+             headerLower.includes('voucher') ||
+             headerLower.includes('invoice') ||
+             headerLower === 'vch no' ||
+             headerLower === 'no' ||
+             headerLower === 'no.';
+    });
+    
+    if (voucherColumns.length > 0) {
+      console.log("Detected voucher columns:", voucherColumns);
+      
+      // Look for patterns in the prompt that might reference voucher numbers
+      const voucherPatterns = [
+        /voucher no\.?\s*(\d+)/i,
+        /vou\.? no\.?\s*(\d+)/i,
+        /voucher\s*(\d+)/i,
+        /vou\s*(\d+)/i,
+        /vch\s*(\d+)/i,
+        /invoice\s*(\d+)/i,
+        /bill\s*(\d+)/i,
+        /receipt\s*(\d+)/i,
+        /transaction\s*(\d+)/i,
+        /no\.?\s*(\d+)/i
+      ];
+      
+      for (const pattern of voucherPatterns) {
+        const match = promptLower.match(pattern);
+        if (match && match[1]) {
+          const searchNumber = match[1];
+          console.log(`Found potential voucher number in prompt: ${searchNumber}`);
+          
+          // Check all voucher columns for matching numbers
+          for (const col of voucherColumns) {
+            // Get all unique voucher numbers from this column
+            const vouchers = new Set<string>();
+            data.forEach(row => {
+              if (row[col]) vouchers.add(row[col]);
+            });
+            
+            // Look for exact or partial matches
+            for (const voucher of vouchers) {
+              // Check if the number from the prompt is contained in the voucher
+              // or if the voucher contains the number
+              if (voucher.includes(searchNumber) || searchNumber.includes(voucher)) {
+                console.log(`Found matching voucher: ${voucher}`);
+                result.specificEntities.push(voucher);
+                result.filters[col] = voucher; // Add as a filter for this column
+              }
+            }
+          }
+          
+          // If we found any matches, break out of the pattern loop
+          if (result.specificEntities.length > 0) break;
+        }
+      }
+    }
   }
 
   // Extract date ranges
