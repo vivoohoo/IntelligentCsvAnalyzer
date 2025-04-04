@@ -86,13 +86,15 @@ async function enhancedCSVProcessing(
     const rowCount = data.length;
 
     // Classify the query type
-    const queryClassification = classifyQuery(prompt);
+    const queryClassification = await classifyQuery(prompt);
 
     // Extract entity references (e.g., specific companies, products)
     const entityReferences = extractEntityReferences(prompt, data, headers);
 
     // Process query based on classification
-    switch (queryClassification.queryType) {
+    const { queryType, confidence } = queryClassification;
+    
+    switch (queryType) {
       case QueryType.TAX_CALCULATION:
         return handleTaxQuery(prompt, data, headers, columnTypes, columnSemanticTypes, entityReferences);
 
@@ -582,7 +584,7 @@ function inferSemanticType(header: string, sampleValues: string[]): ColumnSemant
 }
 
 // Query classification
-function classifyQuery(prompt: string): { queryType: any; confidence: number } {
+async function classifyQuery(prompt: string): Promise<{ queryType: any; confidence: number }> {
   const promptLower = prompt.toLowerCase();
 
   // Define patterns for each query type, enhanced for Indian context
@@ -688,7 +690,39 @@ function classifyQuery(prompt: string): { queryType: any; confidence: number } {
     'fiscal': QueryType.TIME_COMPARISON
   };
 
-  // Calculate score for each query type
+  // First try using OpenAI analysis if available
+  try {
+    // Import the OpenAI service here to avoid circular dependencies
+    const { analyzeQuery } = require('./openaiService');
+
+    // Use OpenAI to analyze the query if API key is available
+    if (process.env.OPENAI_API_KEY) {
+      console.log("Using OpenAI to analyze query:", promptLower);
+      
+      // Get all available column headers
+      const allHeaders = Object.keys(patterns);
+      
+      // Analyze the query with OpenAI
+      const openAIanalysis = await analyzeQuery(prompt, allHeaders);
+      
+      console.log("OpenAI analysis result:", openAIanalysis);
+      
+      // If we got a valid result with reasonable confidence, use it
+      if (openAIanalysis && openAIanalysis.queryType && openAIanalysis.confidence > 0.4) {
+        return { 
+          queryType: openAIanalysis.queryType as QueryType, 
+          confidence: openAIanalysis.confidence 
+        };
+      }
+    }
+  } catch (error) {
+    console.error("Error using OpenAI for query analysis:", error);
+    // Continue with fallback analysis if OpenAI fails
+  }
+
+  // Fallback to pattern-based analysis
+  console.log("Using pattern-based analysis for query:", promptLower);
+  
   let bestType: string = "UNKNOWN";
   let highestScore = 0;
 
@@ -746,6 +780,13 @@ function classifyQuery(prompt: string): { queryType: any; confidence: number } {
   if (bestType === "TAX_CALCULATION" && 
       /gst|cgst|sgst|igst|tax|vat|gstin/i.test(promptLower)) {
     highestScore += 1;
+  }
+
+  // Enhanced detection for voucher number queries
+  if (/voucher|vou\.?\s?no\.?|vch\.?\s?no\.?|v\.no|challan/i.test(promptLower)) {
+    console.log("Detected voucher number terminology in query");
+    bestType = "SUMMARY_STATISTICS";
+    highestScore += 2; // Significant boost for Indian voucher terminology
   }
 
   // Boost confidence for count/amount queries
