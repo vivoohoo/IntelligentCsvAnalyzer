@@ -9,6 +9,7 @@ interface UploadedFile {
   size: number;
   uploadedAt: string;
   buffer: Buffer;
+  fileType?: string; // Optional to maintain compatibility with existing files
 }
 
 interface ChatMessage {

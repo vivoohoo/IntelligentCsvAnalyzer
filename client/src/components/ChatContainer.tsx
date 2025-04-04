@@ -46,13 +46,17 @@ export default function ChatContainer({
     // Create a temporary input element and trigger it
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.csv';
+    input.accept = '.csv,.xlsx,.xls';
     input.onchange = (e) => {
       const target = e.target as HTMLInputElement;
       const file = target.files && target.files[0];
       if (file) {
-        if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-          alert('Please upload a CSV file.');
+        const fileName = file.name.toLowerCase();
+        const isCSV = file.type === 'text/csv' || fileName.endsWith('.csv');
+        const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+        
+        if (!isCSV && !isExcel) {
+          alert('Please upload a CSV or Excel file (.csv, .xlsx, .xls).');
           return;
         }
         onFileUpload(file);
@@ -152,7 +156,7 @@ export default function ChatContainer({
             </div>
             <h1 className="font-heading text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Welcome to NxCompanion</h1>
             <p className="text-gray-600 dark:text-gray-300 max-w-md mx-auto mb-8">
-              Upload a CSV file and ask me anything about your data. I can help analyze sales, count invoices, identify trends, and more.
+              Upload a CSV or Excel file and ask me anything about your data. I can help analyze sales, count invoices, identify trends, and more.
             </p>
             
             {/* Large File Upload Area */}
@@ -228,7 +232,7 @@ export default function ChatContainer({
         {isProcessing && (
           <div className="mb-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md flex items-center">
             <i className="fas fa-spinner fa-spin text-yellow-500 mr-2"></i>
-            <span className="text-sm">Processing your CSV file...</span>
+            <span className="text-sm">Processing your data file...</span>
           </div>
         )}
         
@@ -238,7 +242,7 @@ export default function ChatContainer({
           <Textarea
             id="user-input"
             ref={textareaRef}
-            placeholder="Ask anything about your CSV data..."
+            placeholder="Ask anything about your data..."
             rows={1}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -254,7 +258,7 @@ export default function ChatContainer({
             className="flex items-center gap-2 text-xs mr-2 text-gray-500 hover:text-primary-500"
           >
             <i className="fas fa-file-csv"></i>
-            Upload CSV
+            Upload File
           </Button>
           
           {/* Send button */}

@@ -17,19 +17,24 @@ export const uploadFile = async (req: FileRequest, res: Response) => {
     }
     
     // Validate file type
-    const fileName = file.originalname;
-    if (!fileName.toLowerCase().endsWith('.csv')) {
+    const fileName = file.originalname.toLowerCase();
+    const validExtensions = ['.csv', '.xlsx', '.xls'];
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+    
+    if (!validExtensions.includes(fileExtension)) {
       return res.status(400).json({
-        error: "Please upload a CSV file."
+        error: "Please upload a CSV or Excel file (.csv, .xlsx, .xls)."
       });
     }
     
-    // Save file to storage
+    // Save file to storage with file type information
+    const fileType = fileName.substring(fileName.lastIndexOf('.')+1); // get extension without dot
     const uploadedFile = await storage.saveFile({
       name: fileName,
       size: file.size,
       uploadedAt: new Date().toISOString(),
-      buffer: file.buffer
+      buffer: file.buffer,
+      fileType: fileType // Store file extension so we know how to parse it later
     });
     
     return res.status(200).json({
@@ -38,7 +43,8 @@ export const uploadFile = async (req: FileRequest, res: Response) => {
         id: uploadedFile.id,
         name: uploadedFile.name,
         size: uploadedFile.size,
-        uploadedAt: uploadedFile.uploadedAt
+        uploadedAt: uploadedFile.uploadedAt,
+        fileType: fileType // Return file type to client
       }
     });
   } catch (error) {
@@ -75,7 +81,8 @@ export const getFileInfo = async (req: Request, res: Response) => {
         id: file.id,
         name: file.name,
         size: file.size,
-        uploadedAt: file.uploadedAt
+        uploadedAt: file.uploadedAt,
+        fileType: file.fileType || 'csv' // Default to csv for backward compatibility
       }
     });
   } catch (error) {

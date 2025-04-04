@@ -20,16 +20,24 @@ export const processFileAndPrompt = async (req: FileRequest, res: Response) => {
     }
 
     // Process file if provided
-    let csvData = null;
+    let fileData = null;
     let fileName = null;
+    let fileType = 'csv'; // Default file type
     
     if (file) {
       fileName = file.originalname;
+      const fileName_lower = fileName.toLowerCase();
       
       // Validate file type
-      if (!fileName.toLowerCase().endsWith('.csv')) {
+      if (fileName_lower.endsWith('.csv')) {
+        fileType = 'csv';
+      } else if (fileName_lower.endsWith('.xlsx')) {
+        fileType = 'xlsx';
+      } else if (fileName_lower.endsWith('.xls')) {
+        fileType = 'xls';
+      } else {
         return res.status(400).json({
-          error: "Please upload a CSV file."
+          error: "Please upload a CSV or Excel file (.csv, .xlsx, .xls)."
         });
       }
       
@@ -38,15 +46,16 @@ export const processFileAndPrompt = async (req: FileRequest, res: Response) => {
         name: fileName,
         size: file.size,
         uploadedAt: new Date().toISOString(),
-        buffer: file.buffer
+        buffer: file.buffer,
+        fileType: fileType
       });
       
-      // Process the CSV data
-      csvData = file.buffer;
+      // Process the file data
+      fileData = file.buffer;
     }
     
-    // Process the prompt with the CSV data
-    const response = await processCSV(csvData, message, chatHistory);
+    // Process the prompt with the file data
+    const response = await processCSV(fileData, message, chatHistory, fileType);
     
     // Store the conversation in chat history
     const chatSession = await storage.saveChatMessage({

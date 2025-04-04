@@ -49,38 +49,40 @@ export function checkNLPAvailability(): boolean {
   }
 }
 
-// Process a CSV file with a prompt
+// Process a CSV or Excel file with a prompt
 export async function processCSV(
-  csvData: Buffer | null, 
+  fileData: Buffer | null, 
   prompt: string,
-  chatHistory: Array<{role: string, content: string}> = []
+  chatHistory: Array<{role: string, content: string}> = [],
+  fileType?: string
 ): Promise<string> {
   try {
-    return enhancedCSVProcessing(csvData, prompt, chatHistory);
+    return enhancedCSVProcessing(fileData, prompt, chatHistory, fileType);
   } catch (error) {
-    console.error('Error processing CSV:', error);
+    console.error('Error processing CSV/Excel file:', error);
     return `I'm having trouble processing your request. ${error instanceof Error ? error.message : 'Please try again later.'}`;
   }
 }
 
-// Enhanced CSV processing function with financial data analysis capabilities
+// Enhanced file processing function with financial data analysis capabilities
 async function enhancedCSVProcessing(
-  csvData: Buffer | null, 
+  fileData: Buffer | null, 
   prompt: string,
-  chatHistory: Array<{role: string, content: string}> = []
+  chatHistory: Array<{role: string, content: string}> = [],
+  fileType?: string
 ): Promise<string> {
   // If no file is provided, return general information
-  if (!csvData) {
+  if (!fileData) {
     if (isFinancialQuery(prompt)) {
-      return "I need a CSV file to analyze financial data. Please upload a file with your financial, invoice, or transaction information first.";
+      return "I need a CSV or Excel file to analyze financial data. Please upload a file with your financial, invoice, or transaction information first.";
     }
 
-    return "I'm designed to analyze CSV data with a focus on Indian financial contexts. Please upload a CSV file to continue.";
+    return "I'm designed to analyze financial data with a focus on Indian financial contexts. Please upload a CSV or Excel file to continue.";
   }
 
   try {
-    // Parse CSV data with enhanced parsing to handle different formats
-    const { data, headers, columnTypes, columnSemanticTypes } = parseCSV(csvData);
+    // Parse data with enhanced parsing to handle different formats
+    const { data, headers, columnTypes, columnSemanticTypes } = parseCSV(fileData, fileType);
 
     // Count the number of rows
     const rowCount = data.length;
@@ -336,13 +338,78 @@ async function enhancedCSVProcessing(
         return generateDefaultResponse(data, headers, columnTypes, columnSemanticTypes);
     }
   } catch (error) {
-    console.error('Error in CSV processing:', error);
-    return "I had trouble parsing your CSV file. Please make sure it's properly formatted with comma-separated values.";
+    console.error('Error in file processing:', error);
+    
+    if (fileType === 'xlsx' || fileType === 'xls') {
+      return "I had trouble parsing your Excel file. The file might be corrupted or in an unsupported format.";
+    } else {
+      return "I had trouble parsing your CSV file. Please make sure it's properly formatted with comma-separated values.";
+    }
   }
 }
 
-// Parse CSV with enhanced detection of formats
-function parseCSV(csvData: Buffer) {
+// Import xlsx library for Excel file parsing
+import * as XLSX from 'xlsx';
+
+// Parse CSV and Excel files with enhanced detection of formats
+function parseCSV(csvData: Buffer, fileType?: string) {
+  // Check if this is an Excel file
+  if (fileType === 'xlsx' || fileType === 'xls') {
+    try {
+      // Parse Excel file
+      const workbook = XLSX.read(csvData, { type: 'buffer' });
+      
+      // Get the first sheet
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      
+      // Convert to JSON with headers
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      
+      // Extract headers (first row)
+      if (jsonData.length === 0) {
+        throw new Error("Excel file appears to be empty");
+      }
+      
+      const headers = jsonData[0] as string[];
+      
+      // Convert the rest of the data
+      const data = jsonData.slice(1).map(row => {
+        const obj: Record<string, string> = {};
+        (row as any[]).forEach((cell, index) => {
+          if (index < headers.length) {
+            // Convert all values to strings
+            obj[headers[index]] = cell !== undefined ? String(cell) : '';
+          }
+        });
+        return obj;
+      });
+      
+      console.log("Parsed Excel file successfully");
+      
+      // Follow the same format as CSV parsing for consistency
+      const columnTypes: Record<string, string> = {};
+      const columnSemanticTypes: Record<string, ColumnSemanticType> = {};
+      
+      headers.forEach(header => {
+        // Infer types based on content
+        columnTypes[header] = 'string'; // Default
+        
+        // Sample column values
+        const sampleValues = data.slice(0, 10).map(row => row[header] || '');
+        
+        // Infer semantic types
+        columnSemanticTypes[header] = inferSemanticType(header, sampleValues);
+      });
+      
+      return { data, headers, columnTypes, columnSemanticTypes };
+    } catch (error) {
+      console.error("Error parsing Excel file:", error);
+      throw new Error("Could not parse Excel file. The file might be corrupted or in an unsupported format.");
+    }
+  }
+  
+  // Regular CSV processing for non-Excel files
   const csvContent = csvData.toString('utf-8');
 
   // Try to detect the delimiter

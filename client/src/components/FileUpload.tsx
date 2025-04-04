@@ -22,9 +22,13 @@ export default function FileUpload({ onFileUpload, showLabel = false }: FileUplo
     const file = e.target.files && e.target.files[0];
     
     if (file) {
-      // Check if the file is a CSV
-      if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-        alert('Please upload a CSV file.');
+      // Check if the file is a CSV or Excel file
+      const fileName = file.name.toLowerCase();
+      const isCSV = file.type === 'text/csv' || fileName.endsWith('.csv');
+      const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+      
+      if (!isCSV && !isExcel) {
+        alert('Please upload a CSV or Excel file (.csv, .xlsx, .xls).');
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -56,9 +60,13 @@ export default function FileUpload({ onFileUpload, showLabel = false }: FileUplo
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
       
-      // Check if the file is a CSV
-      if (file.type !== 'text/csv' && !file.name.endsWith('.csv')) {
-        alert('Please upload a CSV file.');
+      // Check if the file is a CSV or Excel file
+      const fileName = file.name.toLowerCase();
+      const isCSV = file.type === 'text/csv' || fileName.endsWith('.csv');
+      const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+      
+      if (!isCSV && !isExcel) {
+        alert('Please upload a CSV or Excel file (.csv, .xlsx, .xls).');
         return;
       }
       
@@ -74,7 +82,7 @@ export default function FileUpload({ onFileUpload, showLabel = false }: FileUplo
           variant="ghost"
           size="icon"
           onClick={handleTriggerFileUpload}
-          title="Upload CSV"
+          title="Upload CSV or Excel file"
           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
         >
           <i className="fas fa-file-csv"></i>
@@ -82,7 +90,7 @@ export default function FileUpload({ onFileUpload, showLabel = false }: FileUplo
         <input 
           type="file" 
           ref={fileInputRef}
-          accept=".csv"
+          accept=".csv,.xlsx,.xls"
           className="hidden"
           onChange={handleFileChange}
         />
@@ -107,17 +115,17 @@ export default function FileUpload({ onFileUpload, showLabel = false }: FileUplo
       <div className="w-16 h-16 mb-4 flex items-center justify-center rounded-full bg-primary-50 dark:bg-primary-900/20 text-primary-500">
         <i className="fas fa-file-csv text-3xl"></i>
       </div>
-      <p className="text-lg font-medium mb-2">Upload your CSV file</p>
+      <p className="text-lg font-medium mb-2">Upload your data file</p>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
-        Drag and drop here or click to browse
+        Drag and drop CSV or Excel file here or click to browse
       </p>
       <Button className="bg-primary-500 hover:bg-primary-600 text-white">
-        Select CSV File
+        Select File
       </Button>
       <input 
         type="file" 
         ref={fileInputRef}
-        accept=".csv"
+        accept=".csv,.xlsx,.xls"
         className="hidden"
         onChange={handleFileChange}
       />

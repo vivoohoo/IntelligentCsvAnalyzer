@@ -18,6 +18,7 @@ interface UploadedFile {
   size: number;
   uploadedAt: string;
   buffer: Buffer;
+  fileType?: string; // Add support for Excel files
 }
 
 // Interface for chat message requests (matching the existing interface)
@@ -73,19 +74,36 @@ export class DatabaseStorage implements IStorage {
 
   // File methods
   async saveFile(file: Omit<UploadedFile, 'id'>): Promise<UploadedFile> {
-    // Generate a unique filename
-    const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.csv`;
+    // Determine the file type/extension
+    const fileType = file.fileType || 'csv';
+    
+    // Generate a unique filename with the correct extension
+    const filename = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileType}`;
     const filepath = join(UPLOADS_DIR, filename);
     
     // Write the file to disk
     await writeFile(filepath, file.buffer);
+    
+    // Map file type to mimetype
+    let mimetype: string;
+    switch (fileType) {
+      case 'xlsx':
+        mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        break;
+      case 'xls':
+        mimetype = 'application/vnd.ms-excel';
+        break;
+      case 'csv':
+      default:
+        mimetype = 'text/csv';
+    }
     
     // Store file metadata in the database
     const fileData: InsertCsvFile = {
       filename,
       originalName: file.name,
       size: file.size,
-      mimetype: 'text/csv',
+      mimetype, // Use the determined mimetype
       userId: null,
       metadata: {
         rowCount: 0, // We would calculate this from the actual file
@@ -102,7 +120,8 @@ export class DatabaseStorage implements IStorage {
       name: file.name,
       size: file.size,
       uploadedAt: savedFile.uploadedAt?.toISOString() || new Date().toISOString(),
-      buffer: file.buffer
+      buffer: file.buffer,
+      fileType: fileType // Include the file type in the response
     };
   }
 
@@ -118,12 +137,24 @@ export class DatabaseStorage implements IStorage {
       // Read the file from disk
       const buffer = await readFile(join(UPLOADS_DIR, fileData.filename));
       
+      // Determine file type from filename or mimetype
+      let fileType: string = 'csv'; // Default
+      const filenameParts = fileData.filename.split('.');
+      if (filenameParts.length > 1) {
+        fileType = filenameParts[filenameParts.length - 1];
+      } else if (fileData.mimetype.includes('sheet')) {
+        fileType = 'xlsx';
+      } else if (fileData.mimetype.includes('excel')) {
+        fileType = 'xls';
+      }
+      
       return {
         id: String(fileData.id),
         name: fileData.originalName,
         size: fileData.size,
         uploadedAt: fileData.uploadedAt?.toISOString() || new Date().toISOString(),
-        buffer
+        buffer,
+        fileType
       };
     } catch (error) {
       console.error(`Error reading file ${fileData.filename}:`, error);
