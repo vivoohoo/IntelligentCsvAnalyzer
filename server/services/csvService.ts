@@ -1494,6 +1494,22 @@ function handleTimeComparisonQuery(
       data.slice(0, 5).forEach((row, idx) => {
         console.log(`Row ${idx+1}: '${row[dateColumn]}' (${typeof row[dateColumn]})`);
       });
+      
+      // Check if all date fields are empty
+      let allDatesEmpty = true;
+      let nonemptyDates = 0;
+      data.forEach(row => {
+        if (row[dateColumn] && row[dateColumn].trim() !== '') {
+          allDatesEmpty = false;
+          nonemptyDates++;
+        }
+      });
+      
+      if (allDatesEmpty) {
+        console.log(`WARNING: All date fields in the CSV appear to be empty (checked ${data.length} rows)`);
+      } else {
+        console.log(`Found ${nonemptyDates} rows with non-empty date values out of ${data.length} total rows`);
+      }
     }
     
     // Find voucher number column
@@ -1639,6 +1655,23 @@ function handleTimeComparisonQuery(
       const monthName = monthNames[targetMonth-1];
       const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
       
+      // Check if the date fields are all empty
+      let allDatesEmpty = true;
+      let totalRows = 0;
+      
+      if (dateColumn) {
+        data.forEach(row => {
+          totalRows++;
+          if (row[dateColumn] && row[dateColumn].trim() !== '') {
+            allDatesEmpty = false;
+          }
+        });
+      }
+      
+      if (allDatesEmpty && totalRows > 0) {
+        return `I found ${totalRows} rows in your data, but the date column "${dateColumn}" appears to be empty. Please make sure your CSV file contains valid date values to search for vouchers by month and year.`;
+      }
+      
       if (matchCount > 0) {
         let response = `I found ${matchCount} vouchers for ${capitalizedMonth} ${targetYear}`;
         
@@ -1654,7 +1687,12 @@ function handleTimeComparisonQuery(
         
         return response + '.';
       } else {
-        return `I couldn't find any vouchers for ${capitalizedMonth} ${targetYear} in your data.`;
+        // If we have dates but no matches for the specific month/year
+        if (!allDatesEmpty) {
+          return `I couldn't find any vouchers for ${capitalizedMonth} ${targetYear} in your data. Please check if your data contains entries for this time period.`;
+        } else {
+          return `I couldn't find any vouchers for ${capitalizedMonth} ${targetYear} in your data.`;
+        }
       }
     }
   }

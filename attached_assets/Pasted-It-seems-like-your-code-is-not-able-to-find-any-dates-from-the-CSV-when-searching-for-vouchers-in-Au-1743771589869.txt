@@ -1,0 +1,33 @@
+It seems like your code is not able to find any dates from the CSV when searching for vouchers in August 2025. This could be due to the date columns being empty or not properly formatted.
+
+Here are a few steps you can take to troubleshoot and potentially fix this issue:
+
+Check Data: Ensure that your CSV has valid date entries in the "Vou Date" column and that they are formatted correctly. If the entries are indeed empty, you'll need to populate them appropriately.
+
+Debugging Output: Add print statements to verify what the "Vou Date" actually contains before the search operation. For example:
+
+print("Sample date values from CSV:", date_column_data)
+This will help you confirm whether the data is being read correctly.
+
+Parsing Dates: If the dates are present but not being recognized, make sure the parsing logic correctly identifies the dates. You could use something like pandas to assist with this, which provides robust date handling.
+
+Handling Empty Rows: If the CSV can have empty rows or unexpected formats, you might want to add logic to handle or skip these cases.
+
+Here's a small snippet to check for empty entries and valid date formats:
+
+import pandas as pd
+# Load your CSV file
+data = pd.read_csv('your_file.csv')
+# Check for empty 'Vou Date' column
+if data['Vou Date'].isnull().all():
+    print("The 'Vou Date' column is completely empty.")
+else:
+    print("Sample date values from 'Vou Date':", data['Vou Date'].head())
+# Filter based on month and year
+# Assuming 'Vou Date' is in datetime format
+data['Vou Date'] = pd.to_datetime(data['Vou Date'], errors='coerce')
+august_data = data[data['Vou Date'].dt.month == 8]
+year_2025_data = august_data[august_data['Vou Date'].dt.year == 2025]
+vou_no_count = year_2025_data['Vou No.'].count()
+print(f"Number of vouchers for August 2025: {vou_no_count}")
+This approach will help ensure you're getting valid data for your query. Adjust the file reading and parsing based on your actual setup. If you need further assistance, feel free to ask!
