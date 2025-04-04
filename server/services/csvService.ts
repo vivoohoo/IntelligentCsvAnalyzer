@@ -398,9 +398,13 @@ function parseCSV(csvData: Buffer) {
   if (headers.length === 1 && headers[0].includes(',')) {
     // This looks like a complex header containing commas
     // Split it properly and handle each column separately
+    console.log("Detected composite header:", headers[0]);
     headers = headers[0].split(',').map(h => h.trim());
-    console.log("Detected composite header, split into:", headers);
+    console.log("Split into individual headers:", headers);
   }
+  
+  // Add debugging info for header detection
+  console.log("Final headers after parsing:", headers);
 
   // Convert CSV rows to objects for easier analysis
   const data: Record<string, string>[] = [];
@@ -578,7 +582,7 @@ function inferSemanticType(header: string, sampleValues: string[]): ColumnSemant
 }
 
 // Query classification
-function classifyQuery(prompt: string): { queryType: QueryType; confidence: number } {
+function classifyQuery(prompt: string): { queryType: any; confidence: number } {
   const promptLower = prompt.toLowerCase();
 
   // Define patterns for each query type, enhanced for Indian context
@@ -685,13 +689,12 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
   };
 
   // Calculate score for each query type
-  let bestType = QueryType.UNKNOWN;
+  let bestType: string = "UNKNOWN";
   let highestScore = 0;
 
   // First check for pattern matches
   Object.entries(patterns).forEach(([type, patternList]) => {
-    const queryType = type as QueryType;
-    if (queryType === QueryType.UNKNOWN) return;
+    if (type === "UNKNOWN") return;
 
     // Calculate match score
     const score = patternList.reduce((sum, pattern) => {
@@ -701,7 +704,7 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
     // Update best match if needed
     if (score > highestScore) {
       highestScore = score;
-      bestType = queryType;
+      bestType = type;
     }
   });
 
@@ -733,21 +736,21 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
     Object.entries(keywordHits).forEach(([type, hits]) => {
       if (hits > maxHits) {
         maxHits = hits;
-        bestType = type as QueryType;
+        bestType = type;
         highestScore = hits;
       }
     });
   }
 
   // Boost confidence for tax-related queries with Indian context
-  if (bestType === QueryType.TAX_CALCULATION && 
+  if (bestType === "TAX_CALCULATION" && 
       /gst|cgst|sgst|igst|tax|vat|gstin/i.test(promptLower)) {
     highestScore += 1;
   }
 
   // Boost confidence for count/amount queries
   if (/how many|count|total number|calculate total/i.test(promptLower)) {
-    if (bestType === QueryType.HIGHEST_SALES || bestType === QueryType.TOP_PRODUCTS) {
+    if (bestType === "HIGHEST_SALES" || bestType === "TOP_PRODUCTS") {
       highestScore += 1;
     }
   }
@@ -755,13 +758,13 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
   // Calculate confidence (0-1) with a higher potential ceiling for better matches
   const confidence = highestScore > 0 ? Math.min(highestScore / 4, 0.95) : 0.4;
 
-  return { queryType: bestType, confidence };
+  return { queryType: bestType as QueryType, confidence };
 }
 
 // Extract entity references from a query
 function extractEntityReferences(
   prompt: string,
-  data: Record<string>[],  headers: string[]
+  data: Record<string, string>[],  headers: string[]
 ): { 
   specificEntities: string[];
   dateRange: { start?: string; end?: string } | null;
@@ -905,15 +908,13 @@ function isCountQuery(prompt: string): boolean {
 
 // Check if a query is related to invoices
 function isInvoiceQuery(prompt: string): boolean {
-  const invoicePatterns = [
-    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, 
-    /vou[\.|\s]?no/i, /voucher[\.|\s]?no/i, /vch[\.|\s]?no/i,
-    /v[\.|\s]?no/i, /vou/i, /vch/i,
-    /record/i, /entry/i, /transaction/i
-  ];
-
   // Special check for Indian voucher terminology
   const promptLower = prompt.toLowerCase();
+  
+  // Debug invoice patterns
+  console.log("Checking if prompt contains voucher/invoice terminology:", promptLower);
+  
+  // Check for common Indian accounting voucher terminology variations
   if (
     promptLower.includes('vou no') || 
     promptLower.includes('voucher') ||
@@ -925,10 +926,24 @@ function isInvoiceQuery(prompt: string): boolean {
     promptLower.includes('v.no') ||
     promptLower.includes('v no')
   ) {
+    console.log("Detected Indian voucher terminology in query");
     return true;
   }
-
-  return invoicePatterns.some(pattern => pattern.test(prompt));
+  
+  // Regular invoice-related patterns
+  const invoicePatterns = [
+    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, 
+    /vou[\.|\s]?no/i, /voucher[\.|\s]?no/i, /vch[\.|\s]?no/i,
+    /v[\.|\s]?no/i, /vou/i, /vch/i,
+    /record/i, /entry/i, /transaction/i
+  ];
+  
+  const patternMatch = invoicePatterns.some(pattern => pattern.test(prompt));
+  if (patternMatch) {
+    console.log("Detected invoice pattern match in query");
+  }
+  
+  return patternMatch;
 }
 
 // Check if a query is related to finances in any way
