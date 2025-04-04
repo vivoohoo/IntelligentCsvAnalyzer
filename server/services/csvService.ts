@@ -407,9 +407,22 @@ function parseCSV(csvData: Buffer) {
   
   // Add debugging info for header detection
   console.log("Final headers after parsing:", headers);
+  
+  // DEBUG: Print all headers to confirm what we're working with
+  console.log("DETECTED CSV HEADERS:");
+  headers.forEach((header, index) => {
+    console.log(`Header ${index+1}: '${header}'`);
+  });
 
   // Convert CSV rows to objects for easier analysis
   const data: Record<string, string>[] = [];
+  
+  // DEBUG: Show first few raw CSV lines to help diagnose parsing issues
+  console.log(`RAW CSV DATA (first 3 rows):`);
+  for (let i = 0; i < Math.min(lines.length, 4); i++) {
+    console.log(`Line ${i}: ${lines[i].substring(0, 100)}${lines[i].length > 100 ? '...' : ''}`);
+  }
+  
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
 
@@ -1494,6 +1507,14 @@ function handleTimeComparisonQuery(
       data.slice(0, 5).forEach((row, idx) => {
         console.log(`Row ${idx+1}: '${row[dateColumn]}' (${typeof row[dateColumn]})`);
       });
+      
+      // DEBUG: Print ALL column values for the first row to check if data is in a different column
+      if (data.length > 0) {
+        console.log("FULL ROW DEBUG - First row values for all columns:");
+        Object.keys(data[0]).forEach(colName => {
+          console.log(`Column '${colName}': '${data[0][colName]}'`);
+        });
+      }
       
       // Check if all date fields are empty
       let allDatesEmpty = true;
