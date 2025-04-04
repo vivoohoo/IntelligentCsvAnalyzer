@@ -26,15 +26,15 @@ enum ColumnSemanticType {
 
 // Query types based on Indian financial context
 enum QueryType {
-  HIGHEST_SALES = "highest_sales",
-  TOP_PRODUCTS = "top_products",
-  CITY_ANALYSIS = "city_analysis",
-  TIME_COMPARISON = "time_comparison",
-  TAX_CALCULATION = "tax_calculation",
-  TREND_ANALYSIS = "trend_analysis",
-  PRODUCT_INSIGHTS = "product_insights",
-  SUMMARY_STATISTICS = "summary_statistics",
-  UNKNOWN = "unknown"
+  HIGHEST_SALES = "HIGHEST_SALES",
+  TOP_PRODUCTS = "TOP_PRODUCTS",
+  CITY_ANALYSIS = "CITY_ANALYSIS",
+  TIME_COMPARISON = "TIME_COMPARISON",
+  TAX_CALCULATION = "TAX_CALCULATION",
+  TREND_ANALYSIS = "TREND_ANALYSIS",
+  PRODUCT_INSIGHTS = "PRODUCT_INSIGHTS",
+  SUMMARY_STATISTICS = "SUMMARY_STATISTICS",
+  UNKNOWN = "UNKNOWN"
 }
 
 // Check if the NLP backend is available
@@ -215,15 +215,30 @@ async function enhancedCSVProcessing(
           
           // Handle invoice query without specific date filtering
           if (isInvoiceQuery(prompt)) {
-            // Special case for "Vou No." or "Voucher No." columns - explicitly count them as invoices
-            const invoiceColumns = headers.filter(header => 
-              columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER || 
-              header.toLowerCase().includes('vou no') || 
-              header.toLowerCase().includes('voucher')
-            );
+            // Special case for various voucher number columns - explicitly count them as invoices
+            // Enhanced to handle more Indian accounting terminology variations
+            const invoiceColumns = headers.filter(header => {
+              const headerLower = header.toLowerCase();
+              return columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER || 
+                    headerLower.includes('vou no') || 
+                    headerLower.includes('voucher') ||
+                    headerLower === 'vou no.' ||
+                    headerLower === 'voucher no.' ||
+                    headerLower === 'vou. no.' ||
+                    headerLower === 'vou.no.' ||
+                    headerLower === 'vch no' ||
+                    headerLower === 'vch no.' ||
+                    headerLower === 'v.no' ||
+                    headerLower === 'v no';
+            });
             
             if (invoiceColumns.length > 0) {
-              return `I found ${rowCount} invoices in your CSV file, using the "${invoiceColumns[0]}" column as the invoice identifier.`;
+              // Provide a more informative and context-aware response
+              const isVoucher = invoiceColumns[0].toLowerCase().includes('vou') || 
+                              invoiceColumns[0].toLowerCase().includes('vch');
+              
+              const identifier = isVoucher ? "voucher" : "invoice";
+              return `I found ${rowCount} ${identifier}s in your CSV file, using the "${invoiceColumns[0]}" column as the ${identifier} identifier.`;
             }
             
             return `I found ${rowCount} records in your CSV file. Each row likely represents a separate invoice or transaction.`;
@@ -364,12 +379,20 @@ function isDateString(str: string): boolean {
 function inferSemanticType(header: string, sampleValues: string[]): ColumnSemanticType {
   const headerLower = header.toLowerCase();
   
-  // Invoice number detection
+  // Invoice number detection - improved to catch more variations of voucher numbers
   if (headerLower.includes('invoice') || headerLower.includes('bill') || 
       headerLower.includes('receipt') || headerLower === 'no.' || 
       headerLower === 'no' || headerLower.includes('number') ||
       headerLower.includes('vou no') || headerLower.includes('voucher no') || 
-      headerLower === 'vou' || headerLower.includes('transaction id')) {
+      headerLower === 'vou' || headerLower.includes('transaction id') ||
+      headerLower === 'vou no.' || headerLower === 'voucher no.' ||
+      headerLower === 'vou. no.' || headerLower === 'vou.no.' ||
+      headerLower === 'vch no' || headerLower === 'vch no.' ||
+      // Common shorthand variations used in Indian accounting
+      headerLower === 'vou' || headerLower === 'vch' || 
+      headerLower === 'v.no' || headerLower === 'v no' ||
+      // Match "no" followed by anything else to catch "Voucher No", etc.
+      (headerLower.includes('no') && (headerLower.includes('vou') || headerLower.includes('voucher')))) {
     return ColumnSemanticType.INVOICE_NUMBER;
   }
   
@@ -612,14 +635,14 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
   }
   
   // Boost confidence for tax-related queries with Indian context
-  if (bestType === "tax_calculation" && 
+  if (bestType === QueryType.TAX_CALCULATION && 
       /gst|cgst|sgst|igst|tax|vat|gstin/i.test(promptLower)) {
     highestScore += 1;
   }
   
   // Boost confidence for count/amount queries
   if (/how many|count|total number|calculate total/i.test(promptLower)) {
-    if (bestType === "highest_sales" || bestType === "top_products") {
+    if (bestType === QueryType.HIGHEST_SALES || bestType === QueryType.TOP_PRODUCTS) {
       highestScore += 1;
     }
   }
@@ -768,8 +791,10 @@ function isCountQuery(prompt: string): boolean {
 // Check if a query is related to invoices
 function isInvoiceQuery(prompt: string): boolean {
   const invoicePatterns = [
-    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, /vou/i,
-    /record/i, /entry/i, /transaction/i, /vou no/i, /voucher no/i
+    /invoice/i, /bill/i, /receipt/i, /challan/i, /voucher/i, 
+    /vou[\.|\s]?no/i, /voucher[\.|\s]?no/i, /vch[\.|\s]?no/i,
+    /v[\.|\s]?no/i, /vou/i, /vch/i,
+    /record/i, /entry/i, /transaction/i
   ];
   
   return invoicePatterns.some(pattern => pattern.test(prompt));
