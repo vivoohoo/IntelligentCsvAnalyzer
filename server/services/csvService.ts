@@ -692,8 +692,10 @@ async function classifyQuery(prompt: string): Promise<{ queryType: any; confiden
 
   // First try using OpenAI analysis if available
   try {
-    // Import the OpenAI service here to avoid circular dependencies
-    const { analyzeQuery } = require('./openaiService');
+    // Import the OpenAI service directly
+    // Using dynamic import to avoid circular dependencies
+    const openaiService = await import('./openaiService');
+    const { analyzeQuery } = openaiService;
 
     // Use OpenAI to analyze the query if API key is available
     if (process.env.OPENAI_API_KEY) {
