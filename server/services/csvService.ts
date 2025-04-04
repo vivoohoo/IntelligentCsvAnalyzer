@@ -159,57 +159,99 @@ async function enhancedCSVProcessing(
               }
             }
             
-            if (dateColumn) {
+            // Check if query specifically mentions "vou no" or "voucher" - for direct filtering by voucher
+            const isVoucherQuery = promptLower.includes('vou no') || 
+                                  promptLower.includes('vou no.') ||
+                                  promptLower.includes('vch no') ||
+                                  promptLower.includes('voucher');
+            
+            // Find voucher number column if it's a voucher query
+            let voucherColumn = '';
+            if (isVoucherQuery) {
+              for (const header of headers) {
+                const headerLower = header.toLowerCase();
+                if (
+                  headerLower.includes('vou no') || 
+                  headerLower.includes('voucher') ||
+                  headerLower === 'vou no.' ||
+                  headerLower === 'voucher no.' ||
+                  headerLower === 'vou. no.' ||
+                  headerLower === 'vou.no.' ||
+                  headerLower === 'vch no' ||
+                  headerLower === 'vch no.' ||
+                  headerLower === 'v.no' ||
+                  headerLower === 'v no' ||
+                  columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER
+                ) {
+                  voucherColumn = header;
+                  break;
+                }
+              }
+            }
+            
+            if (dateColumn || voucherColumn) {
               let count = 0;
               const monthStr = targetMonth.toString().padStart(2, '0');
               
               // Count matching dates
               for (const row of data) {
-                const dateValue = row[dateColumn];
-                if (!dateValue) continue;
+                let isMatch = false;
                 
-                // Try to match date in various formats
-                // Check for DD/MM/YYYY format (common in India)
-                if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
-                  const parts = dateValue.split(/[\/\-\.]/);
-                  // Assume DD/MM/YYYY format
-                  const month = parseInt(parts[1]);
-                  const year = parseInt(parts[2]);
-                  
-                  if (month === targetMonth && year === targetYear) {
-                    count++;
-                  }
-                } 
-                // Check for MM/DD/YYYY format
-                else if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
-                  const parts = dateValue.split(/[\/\-\.]/);
-                  // Try MM/DD/YYYY
-                  let month = parseInt(parts[0]);
-                  let year = parseInt(parts[2]);
-                  
-                  if (month === targetMonth && year === targetYear) {
-                    count++;
+                // If we have a date column, check the date
+                if (dateColumn) {
+                  const dateValue = row[dateColumn];
+                  if (dateValue) {
+                    // Try to match date in various formats
+                    // Check for DD/MM/YYYY format (common in India)
+                    if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+                      const parts = dateValue.split(/[\/\-\.]/);
+                      // Assume DD/MM/YYYY format
+                      const month = parseInt(parts[1]);
+                      const year = parseInt(parts[2]);
+                      
+                      if (month === targetMonth && year === targetYear) {
+                        isMatch = true;
+                      }
+                    } 
+                    // Check for MM/DD/YYYY format
+                    else if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+                      const parts = dateValue.split(/[\/\-\.]/);
+                      // Try MM/DD/YYYY
+                      let month = parseInt(parts[0]);
+                      let year = parseInt(parts[2]);
+                      
+                      if (month === targetMonth && year === targetYear) {
+                        isMatch = true;
+                      }
+                    }
+                    // Check for YYYY-MM-DD format
+                    else if (dateValue.match(/\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}/)) {
+                      const parts = dateValue.split(/[\/\-\.]/);
+                      const year = parseInt(parts[0]);
+                      const month = parseInt(parts[1]);
+                      
+                      if (month === targetMonth && year === targetYear) {
+                        isMatch = true;
+                      }
+                    }
+                    // Check for text format like "Feb 2025" or "February 2025"
+                    else if (dateValue.toLowerCase().includes(monthNames[targetMonth-1]) && 
+                             dateValue.includes(targetYear.toString())) {
+                      isMatch = true;
+                    }
                   }
                 }
-                // Check for YYYY-MM-DD format
-                else if (dateValue.match(/\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}/)) {
-                  const parts = dateValue.split(/[\/\-\.]/);
-                  const year = parseInt(parts[0]);
-                  const month = parseInt(parts[1]);
-                  
-                  if (month === targetMonth && year === targetYear) {
-                    count++;
-                  }
-                }
-                // Check for text format like "Feb 2025" or "February 2025"
-                else if (dateValue.toLowerCase().includes(monthNames[targetMonth-1]) && 
-                         dateValue.includes(targetYear.toString())) {
+                
+                // If we matched the date or if there's no date column but we have a voucher column, count it
+                if (isMatch || (!dateColumn && voucherColumn)) {
                   count++;
                 }
               }
               
               const monthName = monthNames[targetMonth-1];
-              return `I found ${count} invoices/records for ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${targetYear} in your data.`;
+              const responseColumn = isVoucherQuery && voucherColumn ? voucherColumn : "date";
+              
+              return `I found ${count} ${isVoucherQuery ? 'vouchers' : 'invoices/records'} for ${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${targetYear} in your data ${voucherColumn ? `(using the "${voucherColumn}" column)` : ''}.`;
             }
           }
           
@@ -785,6 +827,17 @@ function isCountQuery(prompt: string): boolean {
     /number of/i, /quantity of/i, /sum of/i, /tally/i
   ];
   
+  // Special case for various voucher/invoice terms commonly used in Indian accounting
+  const promptLower = prompt.toLowerCase();
+  if (
+    promptLower.includes('how many') || 
+    promptLower.includes('count') || 
+    promptLower.includes('total') ||
+    promptLower.includes('number of')
+  ) {
+    return true;
+  }
+  
   return countPatterns.some(pattern => pattern.test(prompt));
 }
 
@@ -796,6 +849,22 @@ function isInvoiceQuery(prompt: string): boolean {
     /v[\.|\s]?no/i, /vou/i, /vch/i,
     /record/i, /entry/i, /transaction/i
   ];
+  
+  // Special check for Indian voucher terminology
+  const promptLower = prompt.toLowerCase();
+  if (
+    promptLower.includes('vou no') || 
+    promptLower.includes('voucher') ||
+    promptLower.includes('vou no.') ||
+    promptLower.includes('vou. no.') ||
+    promptLower.includes('vou.no.') ||
+    promptLower.includes('vch no') ||
+    promptLower.includes('vch no.') ||
+    promptLower.includes('v.no') ||
+    promptLower.includes('v no')
+  ) {
+    return true;
+  }
   
   return invoicePatterns.some(pattern => pattern.test(prompt));
 }
