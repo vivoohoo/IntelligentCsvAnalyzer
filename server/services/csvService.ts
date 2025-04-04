@@ -690,8 +690,65 @@ async function classifyQuery(prompt: string): Promise<{ queryType: any; confiden
     'fiscal': QueryType.TIME_COMPARISON
   };
 
-  // First try using OpenAI analysis if available
+  // Enhanced pattern-based analysis without OpenAI dependency
+  console.log("Using enhanced pattern-based analysis for query:", promptLower);
+  
+  // First, check for common accounting terminology in the query
+  // This is particularly important for Indian voucher number queries
+  if (promptLower.includes('voucher') || 
+      promptLower.includes('vou no') || 
+      promptLower.includes('vou no.') || 
+      promptLower.includes('vou. no.') || 
+      promptLower.includes('vou.no.') || 
+      promptLower.includes('vch no') || 
+      promptLower.includes('vch no.') || 
+      promptLower.includes('v.no') || 
+      promptLower.includes('v no')) {
+    
+    console.log("Detected voucher terminology in query");
+    
+    // Check if this is a date-specific voucher query
+    const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                        'july', 'august', 'september', 'october', 'november', 'december'];
+    
+    let detectedMonth = -1;
+    for (let i = 0; i < monthNames.length; i++) {
+      if (promptLower.includes(monthNames[i])) {
+        detectedMonth = i;
+        console.log("Detected month in query:", monthNames[i]);
+        break;
+      }
+    }
+    
+    // Check for year in the query
+    const yearMatch = promptLower.match(/\b(20\d{2})\b/);
+    let detectedYear = -1;
+    if (yearMatch) {
+      detectedYear = parseInt(yearMatch[1]);
+      console.log("Detected year in query:", detectedYear);
+    }
+    
+    // If we have date information, this is a time-specific query
+    if (detectedMonth >= 0 || detectedYear > 0) {
+      return {
+        queryType: QueryType.TIME_COMPARISON,
+        confidence: 0.85
+        // Store detected month/year in global state or pass via extraction later
+      };
+    }
+    
+    // If no date specifics, this is a general voucher summary query
+    return {
+      queryType: QueryType.SUMMARY_STATISTICS,
+      confidence: 0.75
+    };
+  }
+  
+  // Try OpenAI only if specifically enabled and no pattern match was found
+  // This is left as a backup but we're primarily using pattern matching now
   try {
+    // Skip OpenAI for now as we're strengthening pattern analysis
+    /* 
     // Import the OpenAI service directly
     // Using dynamic import to avoid circular dependencies
     const openaiService = await import('./openaiService');
@@ -717,9 +774,10 @@ async function classifyQuery(prompt: string): Promise<{ queryType: any; confiden
         };
       }
     }
+    */
   } catch (error) {
-    console.error("Error using OpenAI for query analysis:", error);
-    // Continue with fallback analysis if OpenAI fails
+    console.error("Error in query analysis:", error);
+    // Continue with fallback analysis if any part fails
   }
 
   // Fallback to pattern-based analysis
@@ -1000,6 +1058,33 @@ function isFinancialQuery(prompt: string): boolean {
   ];
 
   return financialPatterns.some(pattern => pattern.test(prompt));
+}
+
+// Extract date information from a query
+function extractDateInfoFromQuery(prompt: string): { targetMonth: number; targetYear: number } {
+  const promptLower = prompt.toLowerCase();
+  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                      'july', 'august', 'september', 'october', 'november', 'december'];
+  
+  // Check for specific month in query
+  let targetMonth = -1;
+  for (let i = 0; i < monthNames.length; i++) {
+    if (promptLower.includes(monthNames[i])) {
+      targetMonth = i + 1; // 1-based month number
+      console.log(`Detected month in query: ${monthNames[i]} (${targetMonth})`);
+      break;
+    }
+  }
+  
+  // Check for year in query
+  const yearMatch = promptLower.match(/\b(20\d{2})\b/);
+  let targetYear = -1;
+  if (yearMatch) {
+    targetYear = parseInt(yearMatch[1]);
+    console.log(`Detected year in query: ${targetYear}`);
+  }
+  
+  return { targetMonth, targetYear };
 }
 
 // Handle tax query
@@ -1378,6 +1463,153 @@ function handleTimeComparisonQuery(
   columnSemanticTypes: Record<string, ColumnSemanticType>,
   entityReferences: any
 ): string {
+  // Extract date information from the query
+  const dateInfo = extractDateInfoFromQuery(prompt);
+  const { targetMonth, targetYear } = dateInfo;
+  
+  // If we have both month and year, this is a voucher count by date query
+  const promptLower = prompt.toLowerCase();
+  if (targetMonth > 0 && targetYear > 0 && 
+     (isCountQuery(prompt) || isInvoiceQuery(prompt) || promptLower.includes('voucher'))) {
+    
+    // Find date column
+    let dateColumn = '';
+    for (const header of headers) {
+      const headerLower = header.toLowerCase();
+      if (headerLower.includes('date') || 
+          headerLower === 'dt' || 
+          headerLower.includes('vou date') ||
+          headerLower.includes('invoice date') ||
+          headerLower.includes('bill date')) {
+        dateColumn = header;
+        break;
+      }
+    }
+    
+    // Find voucher number column
+    const voucherColumns = headers.filter(header => {
+      const headerLower = header.toLowerCase();
+      return headerLower.includes('vou no') || 
+             headerLower.includes('voucher') ||
+             headerLower === 'vou no.' ||
+             headerLower === 'voucher no.' ||
+             headerLower === 'vou. no.' ||
+             headerLower === 'vou.no.' ||
+             headerLower === 'vch no' ||
+             headerLower === 'vch no.' ||
+             headerLower === 'v.no' ||
+             headerLower === 'v no' ||
+             columnSemanticTypes[header] === ColumnSemanticType.INVOICE_NUMBER;
+    });
+    
+    const voucherColumn = voucherColumns.length > 0 ? voucherColumns[0] : '';
+    
+    if (dateColumn || voucherColumn) {
+      let matchCount = 0;
+      let totalAmount = 0;
+      const matchingVouchers: string[] = [];
+      
+      // Iterate through data and count matches
+      data.forEach(row => {
+        let isMatch = false;
+        
+        // If we have a date column, check if it matches target month/year
+        if (dateColumn && row[dateColumn]) {
+          const dateValue = row[dateColumn];
+          
+          // Try different date formats (with special handling for Indian DD/MM/YYYY format)
+          if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+            // Assume DD/MM/YYYY (common in India)
+            const parts = dateValue.split(/[\/\-\.]/);
+            const month = parseInt(parts[1]);
+            const year = parseInt(parts[2]);
+            
+            if (month === targetMonth && year === targetYear) {
+              isMatch = true;
+            }
+          } 
+          // Also check for MM/DD/YYYY format just in case
+          else if (dateValue.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}/)) {
+            const parts = dateValue.split(/[\/\-\.]/);
+            const month = parseInt(parts[0]);
+            const year = parseInt(parts[2]);
+            
+            if (month === targetMonth && year === targetYear) {
+              isMatch = true;
+            }
+          }
+          // Also check for YYYY-MM-DD format
+          else if (dateValue.match(/\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}/)) {
+            const parts = dateValue.split(/[\/\-\.]/);
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            
+            if (month === targetMonth && year === targetYear) {
+              isMatch = true;
+            }
+          }
+          // Also check for text date format like "Feb 2023"
+          else if (dateValue.toLowerCase().includes(['january', 'february', 'march', 'april', 'may', 'june', 
+                      'july', 'august', 'september', 'october', 'november', 'december'][targetMonth-1]) && 
+                   dateValue.includes(targetYear.toString())) {
+            isMatch = true;
+          }
+        }
+        
+        if (isMatch) {
+          matchCount++;
+          
+          // Keep track of voucher numbers if available
+          if (voucherColumn && row[voucherColumn]) {
+            matchingVouchers.push(row[voucherColumn]);
+          }
+          
+          // If there's an amount column, sum it up
+          const amountColumns = headers.filter(header => 
+            columnSemanticTypes[header] === ColumnSemanticType.AMOUNT
+          );
+          
+          if (amountColumns.length > 0) {
+            // Use the first amount column
+            const amountCol = amountColumns[0];
+            const amountStr = row[amountCol];
+            
+            if (amountStr) {
+              // Clean up amount string (remove currency symbols, commas)
+              const cleanAmount = amountStr.replace(/,/g, '').replace(/₹/g, '').replace(/Rs\./i, '').trim();
+              if (!isNaN(Number(cleanAmount)) && cleanAmount !== '') {
+                totalAmount += Number(cleanAmount);
+              }
+            }
+          }
+        }
+      });
+      
+      // Generate response based on what we found
+      const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                        'july', 'august', 'september', 'october', 'november', 'december'];
+      const monthName = monthNames[targetMonth-1];
+      const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+      
+      if (matchCount > 0) {
+        let response = `I found ${matchCount} vouchers for ${capitalizedMonth} ${targetYear}`;
+        
+        // Add amount information if we calculated it
+        if (totalAmount > 0) {
+          response += ` with a total amount of ₹${totalAmount.toFixed(2)}`;
+        }
+        
+        // Add voucher numbers if there aren't too many
+        if (matchingVouchers.length > 0 && matchingVouchers.length <= 5) {
+          response += `. Voucher numbers: ${matchingVouchers.join(', ')}`;
+        }
+        
+        return response + '.';
+      } else {
+        return `I couldn't find any vouchers for ${capitalizedMonth} ${targetYear} in your data.`;
+      }
+    }
+  }
   // Find date column
   const dateColumns = headers.filter(header => 
     columnSemanticTypes[header] === ColumnSemanticType.DATE
