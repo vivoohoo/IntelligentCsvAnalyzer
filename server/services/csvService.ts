@@ -761,8 +761,7 @@ function classifyQuery(prompt: string): { queryType: QueryType; confidence: numb
 // Extract entity references from a query
 function extractEntityReferences(
   prompt: string,
-  data: Record<string>[],
-  headers: string[]
+  data: Record<string>[],  headers: string[]
 ): { 
   specificEntities: string[];
   dateRange: { start?: string; end?: string } | null;
@@ -1369,36 +1368,38 @@ function handleTimeComparisonQuery(
 
     // Try different date formats
     try {
-      // First try to parse as a standard date
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        const month = date.getMonth() + 1; // getMonth() returns 0-11
-        const year = date.getFullYear();
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                           'July', 'August', 'September', 'October', 'November', 'December'];
-        period = `${monthNames[month - 1]} ${year}`;
-      } else {
-        // Try parsing DD/MM/YYYY or MM/DD/YYYY format
-        const dateParts = dateStr.split(/[-/.]/);
-        if (dateParts.length >= 3) {
-          // Try both DD/MM/YYYY and MM/DD/YYYY interpretations
-          let month, year;
+      // First try parsing DD/MM/YYYY or MM/DD/YYYY format since these are more common in Indian context
+      const dateParts = dateStr.split(/[-/.]/);
+      if (dateParts.length >= 3) {
+        let month, year;
 
-          // First try DD/MM/YYYY
-          month = parseInt(dateParts[1]);
+        // Try DD/MM/YYYY first (common Indian format)
+        month = parseInt(dateParts[1]);
+        year = parseInt(dateParts[2]);
+
+        // If that doesn't look right, try MM/DD/YYYY
+        if (isNaN(month) || month > 12) {
+          month = parseInt(dateParts[0]);
           year = parseInt(dateParts[2]);
+        }
 
-          // If that doesn't work, try MM/DD/YYYY
-          if (isNaN(month) || isNaN(year) || month > 12) {
-            month = parseInt(dateParts[0]);
-            year = parseInt(dateParts[2]);
-          }
+        // If we have valid month and year, use them
+        if (!isNaN(month) && !isNaN(year) && month >= 1 && month <= 12) {
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+          period = `${monthNames[month - 1]} ${year}`;
+        }
+      }
 
-          if (!isNaN(month) && !isNaN(year) && month >= 1 && month <= 12) {
-            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                             'July', 'August', 'September', 'October', 'November', 'December'];
-            period = `${monthNames[month - 1]} ${year}`;
-          }
+      // If above failed, try standard date parsing
+      if (!period) {
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          const month = date.getMonth() + 1;
+          const year = date.getFullYear();
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+          period = `${monthNames[month - 1]} ${year}`;
         }
       }
     } catch (e) {
@@ -1511,36 +1512,38 @@ function handleTrendAnalysisQuery(
 
     // Try different date formats
     try {
-      // First try to parse as a standard date
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        const month = date.getMonth() + 1; // getMonth() returns 0-11
-        const year = date.getFullYear();
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                           'July', 'August', 'September', 'October', 'November', 'December'];
-        period = `${monthNames[month - 1]} ${year}`;
-      } else {
-        // Try parsing DD/MM/YYYY or MM/DD/YYYY format
-        const dateParts = dateStr.split(/[-/.]/);
-        if (dateParts.length >= 3) {
-          // Try both DD/MM/YYYY and MM/DD/YYYY interpretations
-          let month, year;
+      // First try parsing DD/MM/YYYY or MM/DD/YYYY format since these are more common in Indian context
+      const dateParts = dateStr.split(/[-/.]/);
+      if (dateParts.length >= 3) {
+        let month, year;
 
-          // First try DD/MM/YYYY
-          month = parseInt(dateParts[1]);
+        // Try DD/MM/YYYY first (common Indian format)
+        month = parseInt(dateParts[1]);
+        year = parseInt(dateParts[2]);
+
+        // If that doesn't look right, try MM/DD/YYYY
+        if (isNaN(month) || month > 12) {
+          month = parseInt(dateParts[0]);
           year = parseInt(dateParts[2]);
+        }
 
-          // If that doesn't work, try MM/DD/YYYY
-          if (isNaN(month) || isNaN(year) || month > 12) {
-            month = parseInt(dateParts[0]);
-            year = parseInt(dateParts[2]);
-          }
+        // If we have valid month and year, use them
+        if (!isNaN(month) && !isNaN(year) && month >= 1 && month <= 12) {
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+          period = `${monthNames[month - 1]} ${year}`;
+        }
+      }
 
-          if (!isNaN(month) && !isNaN(year) && month >= 1 && month <= 12) {
-            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                             'July', 'August', 'September', 'October', 'November', 'December'];
-            period = `${monthNames[month - 1]} ${year}`;
-          }
+      // If above failed, try standard date parsing
+      if (!period) {
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          const month = date.getMonth() + 1;
+          const year = date.getFullYear();
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+          period = `${monthNames[month - 1]} ${year}`;
         }
       }
     } catch (e) {
