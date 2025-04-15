@@ -15,7 +15,7 @@ localPort = 5000
 externalPort = 80
 
 [workflows]
-runButton = "Streamlit App"
+runButton = "Dev Server"
 
 [[workflows.workflow]]
 name = "Project"
@@ -49,3 +49,12 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "streamlit run app.py --server.address 0.0.0.0 --server.port 5000"
+
+[[workflows.workflow]]
+name = "Dev Server"
+author = 41112100
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
